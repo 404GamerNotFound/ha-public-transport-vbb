@@ -1,0 +1,9 @@
+{
+  "domain": "vbb",
+  "name": "VBB Public Transport",
+  "version": "0.1.0",
+  "documentation": "https://github.com/username/HA-Public-Transport-VBB",
+  "requirements": [],
+  "codeowners": ["@nobody"],
+  "iot_class": "cloud_polling"
+}
