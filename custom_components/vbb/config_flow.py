@@ -7,12 +7,26 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 import homeassistant.helpers.config_validation as cv
 
-from .const import CONF_STATION_ID, DEFAULT_NAME, DOMAIN
+from .const import (
+    CONF_DURATION,
+    CONF_RESULTS,
+    CONF_STATION_ID,
+    DEFAULT_DURATION,
+    DEFAULT_NAME,
+    DEFAULT_RESULTS,
+    DOMAIN,
+)
 
 DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_STATION_ID): str,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_DURATION, default=DEFAULT_DURATION): vol.All(
+            int, vol.Range(min=1)
+        ),
+        vol.Optional(CONF_RESULTS, default=DEFAULT_RESULTS): vol.All(
+            int, vol.Range(min=1)
+        ),
     }
 )
 

@@ -6,7 +6,9 @@
         "description": "Set up a VBB stop.",
         "data": {
           "station_id": "Station ID",
-          "name": "Name"
+          "name": "Name",
+          "duration": "Time span (minutes)",
+          "results": "Maximum results"
         }
       }
     }
