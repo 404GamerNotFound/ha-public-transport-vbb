@@ -5,6 +5,10 @@ Abfahrtszeiten des Verkehrsverbunds Berlin-Brandenburg (VBB) abzurufen und
 als Sensor anzuzeigen. Jede konfigurierte Haltestelle wird in Home Assistant
 als eigenes Gerät dargestellt.
 
+## Beispiel
+
+![Beispielbild Berlin Hauptbahnhof](images/Hauptbahnhof.png)
+
 ## Installation
 
 Die Integration kann bequem über [HACS](https://hacs.xyz/) installiert
@@ -39,3 +43,7 @@ Internetverbindung erforderlich.
 
 Es werden bis zu 100 Abfahrten abgefragt, um auch große Haltestellen
 vollständig abzudecken.
+
+## Autor
+
+Dieses Repository wurde von [404GamerNotFound](https://github.com/404GamerNotFound) (Tony Brüser) erstellt.
