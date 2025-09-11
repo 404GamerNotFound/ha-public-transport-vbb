@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from collections import defaultdict
 
@@ -39,16 +39,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async with async_timeout.timeout(10):
         resp = await session.get(url)
         data = await resp.json()
-    lines: dict[str, list[str]] = defaultdict(list)
+    lines: set[str] = set()
     for d in data:
         line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction and direction not in lines[line]:
-            lines[line].append(direction)
+        if line:
+            lines.add(line)
     sensors = [
-        VbbDepartureSensor(hass, station_id, name, line, direction, idx)
-        for line, dirs in lines.items()
-        for idx, direction in enumerate(dirs, start=1)
+        VbbDepartureSensor(hass, station_id, name, line, idx)
+        for line in lines
+        for idx in (1, 2)
     ]
     async_add_entities(sensors, True)
 
@@ -62,16 +61,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async with async_timeout.timeout(10):
         resp = await session.get(url)
         data = await resp.json()
-    lines: dict[str, list[str]] = defaultdict(list)
+    lines: set[str] = set()
     for d in data:
         line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction and direction not in lines[line]:
-            lines[line].append(direction)
+        if line:
+            lines.add(line)
     sensors = [
-        VbbDepartureSensor(hass, station_id, name, line, direction, idx)
-        for line, dirs in lines.items()
-        for idx, direction in enumerate(dirs, start=1)
+        VbbDepartureSensor(hass, station_id, name, line, idx)
+        for line in lines
+        for idx in (1, 2)
     ]
     async_add_entities(sensors, True)
 
@@ -88,15 +86,14 @@ class VbbDepartureSensor(SensorEntity):
         station_id: str,
         station_name: str,
         line: str,
-        direction: str,
         index: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
         self._station_name = station_name
         self._line = line
-        self._direction = direction
         self._index = index
+        self._direction: str | None = None
         self._attr_name = f"{line}_{index}"
         self._attr_unique_id = f"vbb_{station_id}_{slugify(line)}_{index}"
         self._attr_extra_state_attributes: dict[str, Any] = {}
@@ -118,23 +115,42 @@ class VbbDepartureSensor(SensorEntity):
             data = await resp.json()
 
         if not data:
+            self._direction = None
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
             return
 
-        filtered = [
-            d
-            for d in data
-            if d.get("line", {}).get("name") == self._line
-            and d.get("direction") == self._direction
-        ]
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for d in data:
+            if d.get("line", {}).get("name") != self._line:
+                continue
+            direction = d.get("direction")
+            when = d.get("plannedWhen") or d.get("when")
+            if not direction or not when:
+                continue
+            try:
+                dep_time = datetime.fromisoformat(when)
+            except ValueError:
+                continue
+            if dep_time <= datetime.now(dep_time.tzinfo or timezone.utc):
+                continue
+            grouped[direction].append(d)
 
-        if not filtered:
+        directions = sorted(grouped.keys())
+        if len(directions) < self._index:
+            self._direction = None
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
             return
 
-        first = filtered[0]
+        chosen = directions[self._index - 1]
+        departures = sorted(
+            grouped[chosen],
+            key=lambda d: d.get("plannedWhen") or d.get("when"),
+        )
+
+        first = departures[0]
+        self._direction = chosen
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         when = first.get("plannedWhen") or first.get("when")
         if when:
@@ -152,6 +168,6 @@ class VbbDepartureSensor(SensorEntity):
                 {
                     "when": d.get("plannedWhen") or d.get("when"),
                 }
-                for d in filtered
+                for d in departures
             ],
         }
