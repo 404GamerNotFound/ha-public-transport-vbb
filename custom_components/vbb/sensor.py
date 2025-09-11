@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from collections import defaultdict
 
 import async_timeout
 import voluptuous as vol
@@ -17,6 +18,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.util import slugify
 
 from .const import API_URL, DOMAIN, CONF_STATION_ID, DEFAULT_NAME
 
@@ -32,14 +34,46 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     """Set up the VBB sensor platform."""
     station_id = config[CONF_STATION_ID]
     name = config[CONF_NAME]
-    async_add_entities([VbbDepartureSensor(hass, station_id, name)], True)
+    session = async_get_clientsession(hass)
+    url = API_URL.format(station=station_id)
+    async with async_timeout.timeout(10):
+        resp = await session.get(url)
+        data = await resp.json()
+    lines: dict[str, list[str]] = defaultdict(list)
+    for d in data:
+        line = d.get("line", {}).get("name")
+        direction = d.get("direction")
+        if line and direction and direction not in lines[line]:
+            lines[line].append(direction)
+    sensors = [
+        VbbDepartureSensor(hass, station_id, name, line, direction, idx)
+        for line, dirs in lines.items()
+        for idx, direction in enumerate(dirs, start=1)
+    ]
+    async_add_entities(sensors, True)
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up VBB sensor from a config entry."""
     station_id = entry.data[CONF_STATION_ID]
     name = entry.data[CONF_NAME]
-    async_add_entities([VbbDepartureSensor(hass, station_id, name)], True)
+    session = async_get_clientsession(hass)
+    url = API_URL.format(station=station_id)
+    async with async_timeout.timeout(10):
+        resp = await session.get(url)
+        data = await resp.json()
+    lines: dict[str, list[str]] = defaultdict(list)
+    for d in data:
+        line = d.get("line", {}).get("name")
+        direction = d.get("direction")
+        if line and direction and direction not in lines[line]:
+            lines[line].append(direction)
+    sensors = [
+        VbbDepartureSensor(hass, station_id, name, line, direction, idx)
+        for line, dirs in lines.items()
+        for idx, direction in enumerate(dirs, start=1)
+    ]
+    async_add_entities(sensors, True)
 
 
 class VbbDepartureSensor(SensorEntity):
@@ -48,13 +82,24 @@ class VbbDepartureSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:train"
 
-    def __init__(self, hass, station_id: str, name: str) -> None:
+    def __init__(
+        self,
+        hass,
+        station_id: str,
+        station_name: str,
+        line: str,
+        direction: str,
+        index: int,
+    ) -> None:
         self.hass = hass
         self._station_id = station_id
-        self._attr_name = name
-        self._attr_unique_id = f"vbb_{station_id}"
+        self._station_name = station_name
+        self._line = line
+        self._direction = direction
+        self._index = index
+        self._attr_name = f"{line}_{index}"
+        self._attr_unique_id = f"vbb_{station_id}_{slugify(line)}_{index}"
         self._attr_extra_state_attributes: dict[str, Any] = {}
-        self._station_name = name
         self._session = async_get_clientsession(hass)
 
     @property
@@ -77,7 +122,19 @@ class VbbDepartureSensor(SensorEntity):
             self._attr_extra_state_attributes = {}
             return
 
-        first = data[0]
+        filtered = [
+            d
+            for d in data
+            if d.get("line", {}).get("name") == self._line
+            and d.get("direction") == self._direction
+        ]
+
+        if not filtered:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
+
+        first = filtered[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         when = first.get("plannedWhen") or first.get("when")
         if when:
@@ -89,12 +146,12 @@ class VbbDepartureSensor(SensorEntity):
             self._attr_native_value = None
 
         self._attr_extra_state_attributes = {
+            "line": self._line,
+            "direction": self._direction,
             "departures": [
                 {
-                    "line": d.get("line", {}).get("name"),
-                    "direction": d.get("direction"),
                     "when": d.get("plannedWhen") or d.get("when"),
                 }
-                for d in data
-            ]
+                for d in filtered
+            ],
         }

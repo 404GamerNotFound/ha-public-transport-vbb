@@ -25,8 +25,10 @@ hinzufügen** und wähle **VBB Public Transport** aus. Gib die gewünschte
 Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
 Namen an.
 
-Der Sensor zeigt die Zeit der nächsten Abfahrt als Zustand an. Weitere
-Abfahrten werden als Attribut `departures` bereitgestellt.
+Für jede Linie und Richtung an der Haltestelle wird ein eigener Sensor
+angelegt (z. B. `S7_1` und `S7_2`). Der Sensor zeigt die Zeit der nächsten
+Abfahrt als Zustand an. Weitere Abfahrten werden als Attribut `departures`
+bereitgestellt.
 
 ## Hinweise
 
