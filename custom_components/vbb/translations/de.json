@@ -6,7 +6,9 @@
         "description": "Richte eine VBB-Haltestelle ein.",
         "data": {
           "station_id": "Haltestellen-ID",
-          "name": "Name"
+          "name": "Name",
+          "duration": "Zeitraum (Minuten)",
+          "results": "Maximale Ergebnisse"
         }
       }
     }

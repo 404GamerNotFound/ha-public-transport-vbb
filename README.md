@@ -27,7 +27,8 @@ Nach der Installation kann die Integration über die Benutzeroberfläche
 konfiguriert werden. Gehe zu **Einstellungen → Geräte & Dienste → Integration
 hinzufügen** und wähle **VBB Public Transport** aus. Gib die gewünschte
 Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
-Namen an.
+Namen an. Zusätzlich können die Abfragezeitspanne (`duration` in Minuten) und
+die maximale Anzahl an Ergebnissen (`results`) eingestellt werden.
 
 Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor
 angelegt (z. B. `S7 S Strausberg`). Der Sensor zeigt die Zeit der nächsten
@@ -41,8 +42,8 @@ Die Integration verwendet die öffentliche API unter
 `https://v5.vbb.transport.rest/`. Für die Verwendung ist eine funktionierende
 Internetverbindung erforderlich.
 
-Es werden bis zu 100 Abfahrten abgefragt, um auch große Haltestellen
-vollständig abzudecken.
+Standardmäßig werden die Abfahrten für 120 Minuten im Voraus und maximal 100
+Ergebnisse abgefragt. Diese Werte lassen sich in der Konfiguration anpassen.
 
 ## Autor
 

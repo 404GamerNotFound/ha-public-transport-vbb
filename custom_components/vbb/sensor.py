@@ -20,12 +20,27 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.util import slugify
 
-from .const import API_URL, DOMAIN, CONF_STATION_ID, DEFAULT_NAME
+from .const import (
+    API_URL,
+    CONF_DURATION,
+    CONF_RESULTS,
+    CONF_STATION_ID,
+    DEFAULT_DURATION,
+    DEFAULT_NAME,
+    DEFAULT_RESULTS,
+    DOMAIN,
+)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_STATION_ID): cv.string,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_DURATION, default=DEFAULT_DURATION): vol.All(
+            int, vol.Range(min=1)
+        ),
+        vol.Optional(CONF_RESULTS, default=DEFAULT_RESULTS): vol.All(
+            int, vol.Range(min=1)
+        ),
     }
 )
 
@@ -34,8 +49,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     """Set up the VBB sensor platform."""
     station_id = config[CONF_STATION_ID]
     name = config[CONF_NAME]
+    duration = config.get(CONF_DURATION, DEFAULT_DURATION)
+    results = config.get(CONF_RESULTS, DEFAULT_RESULTS)
     session = async_get_clientsession(hass)
-    url = API_URL.format(station=station_id)
+    url = API_URL.format(station=station_id, duration=duration, results=results)
     async with async_timeout.timeout(10):
         resp = await session.get(url)
         data = await resp.json()
@@ -46,7 +63,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         if line and direction:
             lines[line].add(direction)
     sensors = [
-        VbbDepartureSensor(hass, station_id, name, line, direction)
+        VbbDepartureSensor(
+            hass, station_id, name, line, direction, duration, results
+        )
         for line, directions in lines.items()
         for direction in directions
     ]
@@ -57,8 +76,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Set up VBB sensor from a config entry."""
     station_id = entry.data[CONF_STATION_ID]
     name = entry.data[CONF_NAME]
+    duration = entry.data.get(CONF_DURATION, DEFAULT_DURATION)
+    results = entry.data.get(CONF_RESULTS, DEFAULT_RESULTS)
     session = async_get_clientsession(hass)
-    url = API_URL.format(station=station_id)
+    url = API_URL.format(station=station_id, duration=duration, results=results)
     async with async_timeout.timeout(10):
         resp = await session.get(url)
         data = await resp.json()
@@ -69,7 +90,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if line and direction:
             lines[line].add(direction)
     sensors = [
-        VbbDepartureSensor(hass, station_id, name, line, direction)
+        VbbDepartureSensor(
+            hass, station_id, name, line, direction, duration, results
+        )
         for line, directions in lines.items()
         for direction in directions
     ]
@@ -89,12 +112,16 @@ class VbbDepartureSensor(SensorEntity):
         station_name: str,
         line: str,
         direction: str,
+        duration: int,
+        results: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
         self._station_name = station_name
         self._line = line
         self._direction = direction
+        self._duration = duration
+        self._results = results
         self._attr_name = f"{line} {direction}"
         self._attr_unique_id = (
             f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}"
@@ -112,7 +139,9 @@ class VbbDepartureSensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch departures from the VBB API."""
-        url = API_URL.format(station=self._station_id)
+        url = API_URL.format(
+            station=self._station_id, duration=self._duration, results=self._results
+        )
         async with async_timeout.timeout(10):
             resp = await self._session.get(url)
             data = await resp.json()
