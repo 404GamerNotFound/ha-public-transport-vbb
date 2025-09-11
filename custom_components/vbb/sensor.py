@@ -18,10 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import API_URL, DOMAIN
-
-CONF_STATION_ID = "station_id"
-DEFAULT_NAME = "VBB Departures"
+from .const import API_URL, DOMAIN, CONF_STATION_ID, DEFAULT_NAME
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -35,6 +32,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     """Set up the VBB sensor platform."""
     station_id = config[CONF_STATION_ID]
     name = config[CONF_NAME]
+    async_add_entities([VbbDepartureSensor(hass, station_id, name)], True)
+
+
+async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up VBB sensor from a config entry."""
+    station_id = entry.data[CONF_STATION_ID]
+    name = entry.data[CONF_NAME]
     async_add_entities([VbbDepartureSensor(hass, station_id, name)], True)
 
 

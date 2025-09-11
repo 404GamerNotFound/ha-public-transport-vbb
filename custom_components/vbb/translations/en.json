@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "VBB Public Transport",
+        "description": "Set up a VBB stop.",
+        "data": {
+          "station_id": "Station ID",
+          "name": "Name"
+        }
+      }
+    }
+  }
+}

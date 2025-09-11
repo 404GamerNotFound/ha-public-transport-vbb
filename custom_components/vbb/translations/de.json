@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "VBB Öffentlicher Nahverkehr",
+        "description": "Richte eine VBB-Haltestelle ein.",
+        "data": {
+          "station_id": "Haltestellen-ID",
+          "name": "Name"
+        }
+      }
+    }
+  }
+}
