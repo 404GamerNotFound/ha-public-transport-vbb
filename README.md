@@ -25,13 +25,17 @@ hinzufügen** und wähle **VBB Public Transport** aus. Gib die gewünschte
 Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
 Namen an.
 
-Für jede Linie und Richtung an der Haltestelle wird ein eigener Sensor
-angelegt (z. B. `S7_1` und `S7_2`). Der Sensor zeigt die Zeit der nächsten
+Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor
+angelegt (z. B. `S7 S Strausberg`). Der Sensor zeigt die Zeit der nächsten
 Abfahrt als Zustand an. Weitere Abfahrten werden als Attribut `departures`
-bereitgestellt.
+bereitgestellt. Zusätzlich werden Informationen zur Haltestelle wie
+`latitude` und `longitude` als Attribute bereitgestellt.
 
 ## Hinweise
 
 Die Integration verwendet die öffentliche API unter
 `https://v5.vbb.transport.rest/`. Für die Verwendung ist eine funktionierende
 Internetverbindung erforderlich.
+
+Es werden bis zu 100 Abfahrten abgefragt, um auch große Haltestellen
+vollständig abzudecken.
