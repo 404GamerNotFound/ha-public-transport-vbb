@@ -1,0 +1,6 @@
+{
+  "name": "VBB Public Transport",
+  "hacs_version": "1.0.0",
+  "domains": ["vbb"],
+  "render_readme": true
+}

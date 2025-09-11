@@ -7,20 +7,23 @@ als eigenes Gerät dargestellt.
 
 ## Installation
 
-1. Kopiere den Ordner `custom_components/vbb` in das `custom_components`
-   Verzeichnis deiner Home‑Assistant Installation.
-2. Starte Home Assistant neu.
+Die Integration kann bequem über [HACS](https://hacs.xyz/) installiert
+werden:
+
+1. Füge dieses Repository in HACS als benutzerdefiniertes Repository hinzu.
+2. Suche nach "VBB Public Transport" und installiere die Integration.
+3. Starte Home Assistant neu.
+
+Alternativ kann der Ordner `custom_components/vbb` manuell in das
+`custom_components` Verzeichnis kopiert werden.
 
 ## Konfiguration
 
-Füge in deiner `configuration.yaml` einen Sensor wie folgt hinzu:
-
-```yaml
-sensor:
-  - platform: vbb
-    station_id: "900000003201"  # Beispiel: Berlin Hauptbahnhof
-    name: "Berlin Hbf"
-```
+Nach der Installation kann die Integration über die Benutzeroberfläche
+konfiguriert werden. Gehe zu **Einstellungen → Geräte & Dienste → Integration
+hinzufügen** und wähle **VBB Public Transport** aus. Gib die gewünschte
+Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
+Namen an.
 
 Der Sensor zeigt die Zeit der nächsten Abfahrt als Zustand an. Weitere
 Abfahrten werden als Attribut `departures` bereitgestellt.

@@ -2,3 +2,5 @@
 
 DOMAIN = "vbb"
 API_URL = "https://v5.vbb.transport.rest/stops/{station}/departures?duration=60&results=5"
+CONF_STATION_ID = "station_id"
+DEFAULT_NAME = "VBB Departures"
