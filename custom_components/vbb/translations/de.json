@@ -3,14 +3,31 @@
     "step": {
       "user": {
         "title": "VBB Öffentlicher Nahverkehr",
-        "description": "Richte eine VBB-Haltestelle ein.",
+        "description": "Suche eine Haltestelle per Name oder Koordinaten.",
         "data": {
-          "station_id": "Haltestellen-ID",
+          "station_name": "Haltestellenname",
+          "latitude": "Breitengrad",
+          "longitude": "Längengrad"
+        }
+      },
+      "select_station": {
+        "title": "Haltestelle auswählen",
+        "data": {
+          "station_id": "Haltestelle"
+        }
+      },
+      "config": {
+        "title": "VBB Öffentlicher Nahverkehr",
+        "data": {
           "name": "Name",
           "duration": "Zeitraum (Minuten)",
           "results": "Maximale Ergebnisse"
         }
       }
+    },
+    "error": {
+      "no_input": "Bitte Stationsnamen oder Koordinaten angeben.",
+      "no_stations": "Keine Haltestellen gefunden."
     }
   }
 }

@@ -3,14 +3,31 @@
     "step": {
       "user": {
         "title": "VBB Public Transport",
-        "description": "Set up a VBB stop.",
+        "description": "Search for a station by name or coordinates.",
         "data": {
-          "station_id": "Station ID",
+          "station_name": "Station name",
+          "latitude": "Latitude",
+          "longitude": "Longitude"
+        }
+      },
+      "select_station": {
+        "title": "Select station",
+        "data": {
+          "station_id": "Station"
+        }
+      },
+      "config": {
+        "title": "VBB Public Transport",
+        "data": {
           "name": "Name",
           "duration": "Time span (minutes)",
           "results": "Maximum results"
         }
       }
+    },
+    "error": {
+      "no_input": "Provide a station name or coordinates.",
+      "no_stations": "No stations found."
     }
   }
 }
