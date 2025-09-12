@@ -25,17 +25,20 @@ Alternativ kann der Ordner `custom_components/vbb` manuell in das
 
 Nach der Installation kann die Integration über die Benutzeroberfläche
 konfiguriert werden. Gehe zu **Einstellungen → Geräte & Dienste → Integration
-hinzufügen** und wähle **VBB Public Transport** aus. Gib die gewünschte
-Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
-Namen an. Zusätzlich können die Abfragezeitspanne (`duration` in Minuten) und
-die maximale Anzahl an Ergebnissen (`results`) eingestellt werden.
+hinzufügen** und wähle **VBB Public Transport** aus. Suche nach einer
+Haltestelle, indem du den Namen oder Koordinaten eingibst, und wähle den
+gewünschten Treffer aus. Anschließend können Name, Abfragezeitspanne
+(`duration` in Minuten) und die maximale Anzahl an Ergebnissen (`results`)
+festgelegt werden.
 
 ### Haltestellen-ID finden
 
-Die ID einer Haltestelle lässt sich über die öffentliche API ermitteln. Rufe
-im Browser `https://v5.vbb.transport.rest/locations?query=<Haltestellenname>`
-auf (z. B. `https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`).
-In der JSON-Antwort steht im Feld `id` die benötigte Haltestellen-ID.
+Die ID einer Haltestelle lässt sich weiterhin über die öffentliche API
+ermitteln. Rufe im Browser
+`https://v5.vbb.transport.rest/locations?query=<Haltestellenname>` auf (z. B.
+`https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`). In der
+JSON-Antwort steht im Feld `id` die Haltestellen-ID, die von der Integration
+verwendet wird.
 
 Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor
 angelegt (z. B. `S7 S Strausberg`). Der Sensor zeigt die Zeit der nächsten

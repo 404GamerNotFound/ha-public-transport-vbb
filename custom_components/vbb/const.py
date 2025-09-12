@@ -5,6 +5,8 @@ API_URL = (
     "https://v5.vbb.transport.rest/stops/{station}/departures"
     "?duration={duration}&results={results}"
 )
+SEARCH_URL = "https://v5.vbb.transport.rest/locations"
+NEARBY_URL = "https://v5.vbb.transport.rest/locations/nearby"
 HEADERS = {
     "Accept": "application/json",
     "User-Agent": "HomeAssistant-VBB",
