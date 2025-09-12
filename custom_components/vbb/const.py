@@ -2,7 +2,7 @@
 
 DOMAIN = "vbb"
 API_URL = (
-    "https://v6.transport.rest/vbb/stops/{station}/departures"
+    "https://v5.vbb.transport.rest/stops/{station}/departures"
     "?duration={duration}&results={results}"
 )
 HEADERS = {

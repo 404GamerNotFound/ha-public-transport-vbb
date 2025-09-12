@@ -33,8 +33,8 @@ die maximale Anzahl an Ergebnissen (`results`) eingestellt werden.
 ### Haltestellen-ID finden
 
 Die ID einer Haltestelle lässt sich über die öffentliche API ermitteln. Rufe
-im Browser `https://v6.transport.rest/vbb/locations?query=<Haltestellenname>`
-auf (z. B. `https://v6.transport.rest/vbb/locations?query=Berlin%20Hauptbahnhof`).
+im Browser `https://v5.vbb.transport.rest/locations?query=<Haltestellenname>`
+auf (z. B. `https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`).
 In der JSON-Antwort steht im Feld `id` die benötigte Haltestellen-ID.
 
 Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor
@@ -48,7 +48,7 @@ als Attribute bereitgestellt.
 ## Hinweise
 
 Die Integration verwendet die öffentliche API unter
-`https://v6.transport.rest/vbb/`. Für die Verwendung ist eine funktionierende
+`https://v5.vbb.transport.rest/`. Für die Verwendung ist eine funktionierende
 Internetverbindung erforderlich.
 
 Standardmäßig werden die Abfahrten für 120 Minuten im Voraus und maximal 100
