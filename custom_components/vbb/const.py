@@ -2,9 +2,13 @@
 
 DOMAIN = "vbb"
 API_URL = (
-    "https://v5.vbb.transport.rest/stops/{station}/departures"
+    "https://v6.vbb.transport.rest/stops/{station}/departures"
     "?duration={duration}&results={results}"
 )
+HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "HomeAssistant-VBB",
+}
 CONF_STATION_ID = "station_id"
 CONF_DURATION = "duration"
 CONF_RESULTS = "results"

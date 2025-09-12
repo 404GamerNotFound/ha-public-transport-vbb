@@ -29,6 +29,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_RESULTS,
     DOMAIN,
+    HEADERS,
 )
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -45,6 +46,30 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 )
 
 
+def _get_time(entry: dict[str, Any]) -> str | None:
+    """Return the best available departure time field."""
+    return (
+        entry.get("plannedWhen")
+        or entry.get("when")
+        or entry.get("plannedDeparture")
+        or entry.get("departure")
+    )
+
+
+def _get_delay(entry: dict[str, Any]) -> int | None:
+    """Return delay in minutes if available."""
+    delay = (
+        entry.get("delay")
+        or entry.get("departureDelay")
+        or entry.get("delayInSeconds")
+    )
+    if delay is None:
+        return None
+    if isinstance(delay, int) and abs(delay) > 10:
+        return delay // 60
+    return delay
+
+
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the VBB sensor platform."""
     station_id = config[CONF_STATION_ID]
@@ -54,11 +79,12 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     session = async_get_clientsession(hass)
     url = API_URL.format(station=station_id, duration=duration, results=results)
     async with async_timeout.timeout(10):
-        resp = await session.get(url)
+        resp = await session.get(url, headers=HEADERS)
+        resp.raise_for_status()
         data = await resp.json()
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
-        line = d.get("line", {}).get("name")
+        line = (d.get("line") or {}).get("name")
         dest_info = d.get("destination") or {}
         destination = dest_info.get("name") or d.get("direction")
         if line and destination:
@@ -80,11 +106,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
     session = async_get_clientsession(hass)
     url = API_URL.format(station=station_id, duration=duration, results=results)
     async with async_timeout.timeout(10):
-        resp = await session.get(url)
+        resp = await session.get(url, headers=HEADERS)
+        resp.raise_for_status()
         data = await resp.json()
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
-        line = d.get("line", {}).get("name")
+        line = (d.get("line") or {}).get("name")
         dest_info = d.get("destination") or {}
         destination = dest_info.get("name") or d.get("direction")
         if line and destination:
@@ -141,9 +168,16 @@ class VbbDepartureSensor(SensorEntity):
         url = API_URL.format(
             station=self._station_id, duration=self._duration, results=self._results
         )
-        async with async_timeout.timeout(10):
-            resp = await self._session.get(url)
-            data = await resp.json()
+        try:
+            async with async_timeout.timeout(10):
+                resp = await self._session.get(url, headers=HEADERS)
+                resp.raise_for_status()
+                data = await resp.json()
+        except Exception:
+            self._attr_available = False
+            return
+
+        self._attr_available = True
 
         departures: list[dict[str, Any]] = []
         for d in data:
@@ -153,7 +187,7 @@ class VbbDepartureSensor(SensorEntity):
             dest_name = dest_info.get("name") or d.get("direction")
             if dest_name != self._destination:
                 continue
-            when = d.get("plannedWhen") or d.get("when")
+            when = _get_time(d)
             if not when:
                 continue
             try:
@@ -169,13 +203,13 @@ class VbbDepartureSensor(SensorEntity):
             self._attr_extra_state_attributes = {}
             return
 
-        departures.sort(key=lambda d: d.get("plannedWhen") or d.get("when"))
+        departures.sort(key=_get_time)
         first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         self._direction = first.get("direction")
         dest_info = first.get("destination") or {}
         destination_name = dest_info.get("name") or self._destination
-        when = first.get("plannedWhen") or first.get("when")
+        when = _get_time(first)
         if when:
             try:
                 self._attr_native_value = datetime.fromisoformat(when)
@@ -184,13 +218,12 @@ class VbbDepartureSensor(SensorEntity):
         else:
             self._attr_native_value = None
 
-        stop = first.get("stop", {})
-        location = stop.get("location", {})
-        line_info = first.get("line", {})
-        origin_info = first.get("origin", {})
-        current_pos = first.get("currentTripPosition", {})
-        delay = first.get("delay")
-        delay = delay // 60 if delay is not None else None
+        stop = first.get("stop") or {}
+        location = stop.get("location") or {}
+        line_info = first.get("line") or {}
+        origin_info = first.get("origin") or {}
+        current_pos = first.get("currentTripPosition") or None
+        delay = _get_delay(first)
 
         self._attr_extra_state_attributes = {
             "line": self._line,
@@ -212,10 +245,8 @@ class VbbDepartureSensor(SensorEntity):
             "current_trip_position": current_pos or None,
             "departures": [
                 {
-                    "when": d.get("plannedWhen") or d.get("when"),
-                    "delay": (
-                        d.get("delay") // 60 if d.get("delay") is not None else None
-                    ),
+                    "when": _get_time(d),
+                    "delay": _get_delay(d),
                     "platform": d.get("platform"),
                     "destination": (d.get("destination") or {}).get("name"),
                     "trip_id": d.get("tripId"),
