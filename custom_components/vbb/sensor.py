@@ -59,7 +59,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
         line = d.get("line", {}).get("name")
-        destination = d.get("destination", {}).get("name")
+        destination = d.get("destination", {}).get("name") or d.get("direction")
         if line and destination:
             lines[line].add(destination)
     sensors = [
@@ -84,7 +84,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
         line = d.get("line", {}).get("name")
-        destination = d.get("destination", {}).get("name")
+        destination = d.get("destination", {}).get("name") or d.get("direction")
         if line and destination:
             lines[line].add(destination)
     sensors = [
@@ -147,7 +147,8 @@ class VbbDepartureSensor(SensorEntity):
         for d in data:
             if d.get("line", {}).get("name") != self._line:
                 continue
-            if d.get("destination", {}).get("name") != self._destination:
+            dest_name = d.get("destination", {}).get("name") or d.get("direction")
+            if dest_name != self._destination:
                 continue
             when = d.get("plannedWhen") or d.get("when")
             if not when:
@@ -169,6 +170,7 @@ class VbbDepartureSensor(SensorEntity):
         first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         self._direction = first.get("direction")
+        destination_name = first.get("destination", {}).get("name") or self._destination
         when = first.get("plannedWhen") or first.get("when")
         if when:
             try:
@@ -188,7 +190,7 @@ class VbbDepartureSensor(SensorEntity):
 
         self._attr_extra_state_attributes = {
             "line": self._line,
-            "destination": self._destination,
+            "destination": destination_name,
             "direction": self._direction,
             "station_id": self._station_id,
             "station_name": stop.get("name"),
