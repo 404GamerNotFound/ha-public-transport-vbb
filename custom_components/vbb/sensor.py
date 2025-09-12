@@ -59,15 +59,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
         line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction:
-            lines[line].add(direction)
+        destination = d.get("destination", {}).get("name")
+        if line and destination:
+            lines[line].add(destination)
     sensors = [
-        VbbDepartureSensor(
-            hass, station_id, name, line, direction, duration, results
-        )
-        for line, directions in lines.items()
-        for direction in directions
+        VbbDepartureSensor(hass, station_id, name, line, dest, duration, results)
+        for line, destinations in lines.items()
+        for dest in destinations
     ]
     async_add_entities(sensors, True)
 
@@ -86,15 +84,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     lines: dict[str, set[str]] = defaultdict(set)
     for d in data:
         line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction:
-            lines[line].add(direction)
+        destination = d.get("destination", {}).get("name")
+        if line and destination:
+            lines[line].add(destination)
     sensors = [
-        VbbDepartureSensor(
-            hass, station_id, name, line, direction, duration, results
-        )
-        for line, directions in lines.items()
-        for direction in directions
+        VbbDepartureSensor(hass, station_id, name, line, dest, duration, results)
+        for line, destinations in lines.items()
+        for dest in destinations
     ]
     async_add_entities(sensors, True)
 
@@ -111,7 +107,7 @@ class VbbDepartureSensor(SensorEntity):
         station_id: str,
         station_name: str,
         line: str,
-        direction: str,
+        destination: str,
         duration: int,
         results: int,
     ) -> None:
@@ -119,12 +115,13 @@ class VbbDepartureSensor(SensorEntity):
         self._station_id = station_id
         self._station_name = station_name
         self._line = line
-        self._direction = direction
+        self._destination = destination
+        self._direction: str | None = None
         self._duration = duration
         self._results = results
-        self._attr_name = f"{line} {direction}"
+        self._attr_name = f"{line} {destination}"
         self._attr_unique_id = (
-            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}"
+            f"vbb_{station_id}_{slugify(line)}_{slugify(destination)}"
         )
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._session = async_get_clientsession(hass)
@@ -150,7 +147,7 @@ class VbbDepartureSensor(SensorEntity):
         for d in data:
             if d.get("line", {}).get("name") != self._line:
                 continue
-            if d.get("direction") != self._direction:
+            if d.get("destination", {}).get("name") != self._destination:
                 continue
             when = d.get("plannedWhen") or d.get("when")
             if not when:
@@ -171,6 +168,7 @@ class VbbDepartureSensor(SensorEntity):
         departures.sort(key=lambda d: d.get("plannedWhen") or d.get("when"))
         first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
+        self._direction = first.get("direction")
         when = first.get("plannedWhen") or first.get("when")
         if when:
             try:
@@ -182,20 +180,40 @@ class VbbDepartureSensor(SensorEntity):
 
         stop = first.get("stop", {})
         location = stop.get("location", {})
+        line_info = first.get("line", {})
+        origin_info = first.get("origin", {})
+        current_pos = first.get("currentTripPosition", {})
+        delay = first.get("delay")
+        delay = delay // 60 if delay is not None else None
 
         self._attr_extra_state_attributes = {
             "line": self._line,
+            "destination": self._destination,
             "direction": self._direction,
             "station_id": self._station_id,
             "station_name": stop.get("name"),
+            "station_dhid": stop.get("stationDHID"),
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
+            "line_id": line_info.get("id"),
+            "mode": line_info.get("mode"),
+            "product": line_info.get("product"),
+            "operator": line_info.get("operator", {}).get("name"),
+            "trip_id": first.get("tripId"),
+            "delay": delay,
+            "prognosis_type": first.get("prognosisType"),
+            "origin": origin_info.get("name"),
+            "current_trip_position": current_pos or None,
             "departures": [
                 {
                     "when": d.get("plannedWhen") or d.get("when"),
-                    "delay": d.get("delay"),
+                    "delay": (
+                        d.get("delay") // 60 if d.get("delay") is not None else None
+                    ),
                     "platform": d.get("platform"),
                     "destination": d.get("destination", {}).get("name"),
+                    "trip_id": d.get("tripId"),
+                    "prognosis_type": d.get("prognosisType"),
                 }
                 for d in departures
             ],

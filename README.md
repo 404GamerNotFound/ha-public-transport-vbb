@@ -30,11 +30,20 @@ Haltestellen-ID (z. B. `900000003201` für Berlin Hauptbahnhof) sowie einen
 Namen an. Zusätzlich können die Abfragezeitspanne (`duration` in Minuten) und
 die maximale Anzahl an Ergebnissen (`results`) eingestellt werden.
 
+### Haltestellen-ID finden
+
+Die ID einer Haltestelle lässt sich über die öffentliche API ermitteln. Rufe
+im Browser `https://v5.vbb.transport.rest/locations?query=<Haltestellenname>`
+auf (z. B. `https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`).
+In der JSON-Antwort steht im Feld `id` die benötigte Haltestellen-ID.
+
 Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor
 angelegt (z. B. `S7 S Strausberg`). Der Sensor zeigt die Zeit der nächsten
-Abfahrt als Zustand an. Weitere Abfahrten werden als Attribut `departures`
+Abfahrt als Zustand an. Die aktuelle Verspätung in Minuten wird als Attribut
+`delay` angezeigt. Weitere Abfahrten werden als Attribut `departures`
 bereitgestellt. Zusätzlich werden Informationen zur Haltestelle wie
-`latitude` und `longitude` als Attribute bereitgestellt.
+`latitude`, `longitude`, `station_dhid`, `line_id`, `operator` und `trip_id`
+als Attribute bereitgestellt.
 
 ## Hinweise
 
