@@ -21,7 +21,8 @@
         "data": {
           "name": "Name",
           "duration": "Time span (minutes)",
-          "results": "Maximum results"
+          "results": "Maximum results",
+          "products": "Transport types"
         }
       }
     },
