@@ -17,11 +17,14 @@ from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
     CONF_DURATION,
+    CONF_PRODUCTS,
     CONF_RESULTS,
     CONF_STATION_ID,
+    DEFAULT_PRODUCTS,
     DEFAULT_DURATION,
     DEFAULT_NAME,
     DEFAULT_RESULTS,
+    PRODUCT_OPTIONS,
     DOMAIN,
     HEADERS,
     NEARBY_URL,
@@ -112,9 +115,12 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_DURATION: user_input[CONF_DURATION],
                 CONF_RESULTS: user_input[CONF_RESULTS],
             }
+            options = {CONF_PRODUCTS: user_input.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)}
             await self.async_set_unique_id(self._selected_station["id"])
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=data[CONF_NAME], data=data)
+            return self.async_create_entry(
+                title=data[CONF_NAME], data=data, options=options
+            )
 
         data_schema = vol.Schema(
             {
@@ -127,6 +133,17 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_RESULTS, default=DEFAULT_RESULTS
                 ): vol.All(int, vol.Range(min=1)),
+                vol.Optional(
+                    CONF_PRODUCTS, default=DEFAULT_PRODUCTS
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            {"label": p.title(), "value": p}
+                            for p in PRODUCT_OPTIONS
+                        ],
+                        multiple=True,
+                    )
+                ),
             }
         )
 

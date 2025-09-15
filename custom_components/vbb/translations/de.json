@@ -21,7 +21,8 @@
         "data": {
           "name": "Name",
           "duration": "Zeitraum (Minuten)",
-          "results": "Maximale Ergebnisse"
+          "results": "Maximale Ergebnisse",
+          "products": "Verkehrsmittel"
         }
       }
     },
