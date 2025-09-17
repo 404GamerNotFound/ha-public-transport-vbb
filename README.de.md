@@ -8,13 +8,12 @@ Dieses Repository stellt eine Home-Assistant Integration bereit, um Abfahrtszeit
 
 ## Installation
 
-Die Integration kann über [HACS](https://hacs.xyz/) installiert werden:
+Die Integration steht als [Standard-Repository in HACS](https://hacs.xyz/) zur Verfügung und kann direkt installiert werden:
 
-1. Füge dieses Repository in HACS als benutzerdefiniertes Repository hinzu.
-2. Suche nach "VBB Public Transport" und installiere die Integration.
-3. Starte Home Assistant neu.
+1. Öffne **HACS → Integrationen** und suche nach **VBB Public Transport**.
+2. Installiere die Integration und starte anschließend Home Assistant neu.
 
-Alternativ kann der Ordner `custom_components/vbb` manuell in das `custom_components` Verzeichnis kopiert werden.
+Alternativ kann der Ordner `custom_components/vbb` manuell in das `custom_components`-Verzeichnis kopiert werden.
 
 ## Konfiguration
 
@@ -33,7 +32,7 @@ Für jede Linie und Zielrichtung an der Haltestelle wird ein eigener Sensor ange
 
 ## Hinweise
 
-Die Integration verwendet die öffentliche API unter `https://v5.vbb.transport.rest/`. Eine funktionierende Internetverbindung ist erforderlich.
+Die Integration verwendet die öffentliche API unter `https://v5.vbb.transport.rest/`. Eine funktionierende Internetverbindung ist erforderlich. Der Dienst deckt ausschließlich Haltestellen in Deutschland (VBB-Gebiet) ab. Home Assistant 2023.12 oder neuer wird benötigt.
 
 Standardmäßig werden Abfahrten für 120 Minuten im Voraus und maximal 100 Ergebnisse abgefragt. Diese Werte lassen sich in der Konfiguration anpassen.
 

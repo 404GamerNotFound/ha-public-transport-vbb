@@ -8,11 +8,10 @@ This repository provides a Home Assistant integration that fetches departure tim
 
 ## Installation
 
-The integration can be installed through [HACS](https://hacs.xyz/):
+The integration is available as a [default repository in HACS](https://hacs.xyz/):
 
-1. Add this repository to HACS as a custom repository.
-2. Search for "VBB Public Transport" and install the integration.
-3. Restart Home Assistant.
+1. Open **HACS → Integrations** and search for **VBB Public Transport**.
+2. Install the integration and restart Home Assistant afterwards.
 
 Alternatively, copy the `custom_components/vbb` folder into your `custom_components` directory.
 
@@ -33,7 +32,7 @@ For each line and direction at the stop a separate sensor is created (e.g. `S7 S
 
 ## Notes
 
-The integration uses the public API at `https://v5.vbb.transport.rest/`. An active internet connection is required.
+The integration uses the public API at `https://v5.vbb.transport.rest/`. An active internet connection is required. Service coverage is limited to stops located in Germany (VBB service area). Home Assistant 2023.12 or newer is required.
 
 By default departures for 120 minutes ahead and up to 100 results are queried. These values can be adjusted in the configuration.
 
