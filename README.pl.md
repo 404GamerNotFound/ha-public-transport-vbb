@@ -8,11 +8,10 @@ To repozytorium udostępnia integrację Home Assistant, która pobiera czasy odj
 
 ## Instalacja
 
-Integrację można zainstalować przez [HACS](https://hacs.xyz/):
+Integrację można zainstalować jako [repozytorium domyślne w HACS](https://hacs.xyz/):
 
-1. Dodaj to repozytorium jako repozytorium niestandardowe w HACS.
-2. Wyszukaj "VBB Public Transport" i zainstaluj integrację.
-3. Uruchom ponownie Home Assistant.
+1. Otwórz **HACS → Integrations** i wyszukaj **VBB Public Transport**.
+2. Zainstaluj integrację i uruchom ponownie Home Assistant.
 
 Alternatywnie skopiuj folder `custom_components/vbb` do swojego katalogu `custom_components`.
 
@@ -33,7 +32,7 @@ Dla każdej linii i kierunku na przystanku tworzony jest osobny sensor (np. `S7 
 
 ## Uwagi
 
-Integracja korzysta z publicznego API `https://v5.vbb.transport.rest/`. Wymagane jest aktywne połączenie z Internetem.
+Integracja korzysta z publicznego API `https://v5.vbb.transport.rest/`. Wymagane jest aktywne połączenie z Internetem. Usługa obejmuje wyłącznie przystanki w Niemczech (obszar VBB). Wymagany jest Home Assistant 2023.12 lub nowszy.
 
 Domyślnie pobierane są odjazdy na 120 minut do przodu i maksymalnie 100 wyników. Wartości te można dostosować w konfiguracji.
 

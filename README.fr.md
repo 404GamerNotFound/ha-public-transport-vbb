@@ -8,11 +8,10 @@ Ce dépôt fournit une intégration Home Assistant permettant d'obtenir les hora
 
 ## Installation
 
-L'intégration peut être installée via [HACS](https://hacs.xyz/) :
+L'intégration est disponible en tant que [dépôt par défaut dans HACS](https://hacs.xyz/) :
 
-1. Ajoutez ce dépôt comme dépôt personnalisé dans HACS.
-2. Recherchez « VBB Public Transport » et installez l'intégration.
-3. Redémarrez Home Assistant.
+1. Ouvrez **HACS → Intégrations** et recherchez **VBB Public Transport**.
+2. Installez l'intégration puis redémarrez Home Assistant.
 
 Sinon, copiez le dossier `custom_components/vbb` dans votre répertoire `custom_components`.
 
@@ -33,7 +32,7 @@ Pour chaque ligne et direction à l'arrêt un capteur séparé est créé (par e
 
 ## Remarques
 
-L'intégration utilise l'API publique `https://v5.vbb.transport.rest/`. Une connexion Internet active est nécessaire.
+L'intégration utilise l'API publique `https://v5.vbb.transport.rest/`. Une connexion Internet active est nécessaire. La couverture du service est limitée aux arrêts situés en Allemagne (zone VBB). Home Assistant 2023.12 ou version ultérieure est requis.
 
 Par défaut les départs des 120 prochaines minutes et jusqu'à 100 résultats sont interrogés. Ces valeurs peuvent être ajustées dans la configuration.
 

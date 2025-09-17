@@ -1,7 +1,10 @@
 {
   "name": "VBB Public Transport",
   "hacs_version": "1.0.0",
+  "homeassistant": "2023.12.0",
   "domains": ["vbb"],
   "render_readme": true,
+  "content_in_root": false,
+  "country": ["DE"],
   "codeowners": ["404GamerNotFound"]
 }
