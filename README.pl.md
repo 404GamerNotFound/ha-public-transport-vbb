@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 To repozytorium udostępnia integrację Home Assistant, która pobiera czasy odjazdów z sieci transportu publicznego Berlina i Brandenburgii (VBB) i prezentuje je jako sensory. Każdy skonfigurowany przystanek pojawia się w Home Assistant jako osobne urządzenie.
 

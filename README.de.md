@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 Dieses Repository stellt eine Home-Assistant Integration bereit, um Abfahrtszeiten des Verkehrsverbunds Berlin-Brandenburg (VBB) als Sensoren anzuzeigen. Jede konfigurierte Haltestelle erscheint in Home Assistant als eigenes Gerät.
 
