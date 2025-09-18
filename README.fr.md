@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 Ce dépôt fournit une intégration Home Assistant permettant d'obtenir les horaires de départ du réseau de transport public de Berlin-Brandebourg (VBB) et de les exposer sous forme de capteurs. Chaque arrêt configuré apparaît dans Home Assistant comme un appareil distinct.
 

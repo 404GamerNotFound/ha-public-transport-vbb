@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 Este repositorio ofrece una integración para Home Assistant que obtiene los horarios de salida de la red de transporte público de Berlín-Brandeburgo (VBB) y los expone como sensores. Cada parada configurada aparece en Home Assistant como un dispositivo propio.
 

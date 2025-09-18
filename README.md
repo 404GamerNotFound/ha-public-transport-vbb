@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 Home Assistant integration for public transport departures in Berlin-Brandenburg (VBB).
 

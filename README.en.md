@@ -1,4 +1,4 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
 This repository provides a Home Assistant integration that fetches departure times from the Berlin–Brandenburg public transport network (VBB) and exposes them as sensors. Each configured stop appears in Home Assistant as its own device.
 
