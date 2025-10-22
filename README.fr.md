@@ -26,13 +26,13 @@ Après l'installation l'intégration peut être configurée via l'interface util
 
 ### ID d'arrêt (optionnel)
 
-L'intégration inclut une fonction de recherche, il n'est donc plus nécessaire de saisir manuellement l'ID d'arrêt. Il est toujours possible de l'obtenir via l'API publique : `https://v5.vbb.transport.rest/locations?query=<nom de l'arrêt>` (ex. `https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`). L'ID d'arrêt se trouve dans le champ `id` de la réponse JSON.
+L'intégration inclut une fonction de recherche, il n'est donc plus nécessaire de saisir manuellement l'ID d'arrêt. Il est toujours possible de l'obtenir via l'API publique : `https://v6.vbb.transport.rest/locations?query=<nom de l'arrêt>` (ex. `https://v6.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`). L'ID d'arrêt se trouve dans le champ `id` de la réponse JSON.
 
 Pour chaque ligne et direction à l'arrêt un capteur séparé est créé (par ex. `S7 S Strausberg`). L'état du capteur indique le prochain départ. Le retard actuel en minutes est exposé dans l'attribut `delay`. Les autres départs sont disponibles dans l'attribut `departures`. Des informations supplémentaires comme `latitude`, `longitude`, `station_dhid`, `line_id`, `operator` et `trip_id` sont fournies.
 
 ## Remarques
 
-L'intégration utilise l'API publique `https://v5.vbb.transport.rest/`. Une connexion Internet active est nécessaire. La couverture du service est limitée aux arrêts situés en Allemagne (zone VBB). Home Assistant 2023.12 ou version ultérieure est requis.
+L'intégration utilise l'API publique `https://v6.vbb.transport.rest/`. Une connexion Internet active est nécessaire. La couverture du service est limitée aux arrêts situés en Allemagne (zone VBB). Home Assistant 2023.12 ou version ultérieure est requis.
 
 Par défaut les départs des 120 prochaines minutes et jusqu'à 100 résultats sont interrogés. Ces valeurs peuvent être ajustées dans la configuration.
 
