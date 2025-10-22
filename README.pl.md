@@ -26,13 +26,13 @@ Po instalacji integrację można skonfigurować za pomocą interfejsu użytkowni
 
 ### ID przystanku (opcjonalnie)
 
-Integracja zawiera funkcję wyszukiwania, więc ręczne podawanie ID przystanku nie jest już wymagane. Nadal można je uzyskać z publicznego API: `https://v5.vbb.transport.rest/locations?query=<nazwa przystanku>` (np. `https://v5.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`). ID przystanku znajduje się w polu `id` odpowiedzi JSON.
+Integracja zawiera funkcję wyszukiwania, więc ręczne podawanie ID przystanku nie jest już wymagane. Nadal można je uzyskać z publicznego API: `https://v6.vbb.transport.rest/locations?query=<nazwa przystanku>` (np. `https://v6.vbb.transport.rest/locations?query=Berlin%20Hauptbahnhof`). ID przystanku znajduje się w polu `id` odpowiedzi JSON.
 
 Dla każdej linii i kierunku na przystanku tworzony jest osobny sensor (np. `S7 S Strausberg`). Stan sensora pokazuje czas następnego odjazdu. Aktualne opóźnienie w minutach udostępniane jest w atrybucie `delay`. Kolejne odjazdy są dostępne w atrybucie `departures`. Udostępniane są również dodatkowe informacje jak `latitude`, `longitude`, `station_dhid`, `line_id`, `operator` i `trip_id`.
 
 ## Uwagi
 
-Integracja korzysta z publicznego API `https://v5.vbb.transport.rest/`. Wymagane jest aktywne połączenie z Internetem. Usługa obejmuje wyłącznie przystanki w Niemczech (obszar VBB). Wymagany jest Home Assistant 2023.12 lub nowszy.
+Integracja korzysta z publicznego API `https://v6.vbb.transport.rest/`. Wymagane jest aktywne połączenie z Internetem. Usługa obejmuje wyłącznie przystanki w Niemczech (obszar VBB). Wymagany jest Home Assistant 2023.12 lub nowszy.
 
 Domyślnie pobierane są odjazdy na 120 minut do przodu i maksymalnie 100 wyników. Wartości te można dostosować w konfiguracji.
 

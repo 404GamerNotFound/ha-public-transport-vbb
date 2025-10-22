@@ -1,12 +1,14 @@
 """Constants for the VBB departures integration."""
 
 DOMAIN = "vbb"
-API_URL = (
-    "https://v5.vbb.transport.rest/stops/{station}/departures"
-    "?duration={duration}&results={results}"
+API_BASES = (
+    "https://v6.vbb.transport.rest",
+    "https://v5.vbb.transport.rest",
 )
-SEARCH_URL = "https://v5.vbb.transport.rest/locations"
-NEARBY_URL = "https://v5.vbb.transport.rest/locations/nearby"
+API_PATH = "/stops/{station}/departures"
+SEARCH_PATH = "/locations"
+NEARBY_PATH = "/locations/nearby"
+REQUEST_TIMEOUT = 10
 HEADERS = {
     "Accept": "application/json",
     "User-Agent": "HomeAssistant-VBB",

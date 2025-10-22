@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-import async_timeout
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -20,8 +19,9 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import slugify
 
+from .api import async_request_json
 from .const import (
-    API_URL,
+    API_PATH,
     CONF_DURATION,
     CONF_PRODUCTS,
     CONF_RESULTS,
@@ -32,7 +32,6 @@ from .const import (
     DEFAULT_RESULTS,
     DOMAIN,
     PRODUCT_OPTIONS,
-    HEADERS,
 )
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -91,12 +90,11 @@ async def _async_setup_station(
     known_dirs: set[tuple[str, str]] = set()
 
     async def discover(now=None):
-        url = API_URL.format(station=station_id, duration=duration, results=results)
+        params = {"duration": duration, "results": results}
         try:
-            async with async_timeout.timeout(10):
-                resp = await session.get(url, headers=HEADERS)
-                resp.raise_for_status()
-                data = await resp.json()
+            data = await async_request_json(
+                session, API_PATH.format(station=station_id), params
+            )
         except Exception:
             return
 
@@ -198,14 +196,11 @@ class VbbDepartureSensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch departures from the VBB API."""
-        url = API_URL.format(
-            station=self._station_id, duration=self._duration, results=self._results
-        )
+        params = {"duration": self._duration, "results": self._results}
         try:
-            async with async_timeout.timeout(10):
-                resp = await self._session.get(url, headers=HEADERS)
-                resp.raise_for_status()
-                data = await resp.json()
+            data = await async_request_json(
+                self._session, API_PATH.format(station=self._station_id), params
+            )
         except Exception:
             self._attr_available = False
             return
@@ -330,14 +325,11 @@ class VbbDirectionSensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch departures from the VBB API."""
-        url = API_URL.format(
-            station=self._station_id, duration=self._duration, results=self._results
-        )
+        params = {"duration": self._duration, "results": self._results}
         try:
-            async with async_timeout.timeout(10):
-                resp = await self._session.get(url, headers=HEADERS)
-                resp.raise_for_status()
-                data = await resp.json()
+            data = await async_request_json(
+                self._session, API_PATH.format(station=self._station_id), params
+            )
         except Exception:
             self._attr_available = False
             return

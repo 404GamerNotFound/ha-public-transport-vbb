@@ -26,10 +26,11 @@ from .const import (
     DEFAULT_RESULTS,
     PRODUCT_OPTIONS,
     DOMAIN,
-    HEADERS,
-    NEARBY_URL,
-    SEARCH_URL,
+    NEARBY_PATH,
+    SEARCH_PATH,
 )
+
+from .api import async_request_json
 
 
 class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -153,9 +154,7 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Search stations by name using the VBB API."""
         session = async_get_clientsession(self.hass)
         params = {"query": name}
-        async with session.get(SEARCH_URL, params=params, headers=HEADERS) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
+        data = await async_request_json(session, SEARCH_PATH, params)
         return [s for s in data if s.get("id") and s.get("name")]
 
     async def _search_by_coordinates(
@@ -164,8 +163,6 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Search stations near the given coordinates."""
         session = async_get_clientsession(self.hass)
         params = {"latitude": latitude, "longitude": longitude}
-        async with session.get(NEARBY_URL, params=params, headers=HEADERS) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
+        data = await async_request_json(session, NEARBY_PATH, params)
         return [s for s in data if s.get("id") and s.get("name")]
 
