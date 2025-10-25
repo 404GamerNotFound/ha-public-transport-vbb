@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -17,7 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.util import slugify
+from homeassistant.util import slugify, dt as dt_util
 
 from .api import async_request_json
 from .const import (
@@ -73,6 +73,22 @@ def _get_delay(entry: dict[str, Any]) -> int | None:
     if isinstance(delay, int) and abs(delay) > 10:
         return delay // 60
     return delay
+
+
+def _parse_departure_time(value: str | None) -> datetime | None:
+    """Parse a departure timestamp and normalize it to UTC."""
+
+    if not value:
+        return None
+
+    parsed = dt_util.parse_datetime(value)
+    if parsed is None:
+        return None
+
+    try:
+        return dt_util.as_utc(parsed)
+    except (TypeError, ValueError):
+        return None
 
 
 async def _async_setup_station(
@@ -207,7 +223,7 @@ class VbbDepartureSensor(SensorEntity):
 
         self._attr_available = True
 
-        departures: list[dict[str, Any]] = []
+        departures: list[tuple[datetime, dict[str, Any]]] = []
         for d in data:
             if d.get("line", {}).get("name") != self._line:
                 continue
@@ -215,36 +231,25 @@ class VbbDepartureSensor(SensorEntity):
             dest_name = dest_info.get("name") or d.get("direction")
             if dest_name != self._destination:
                 continue
-            when = _get_time(d)
-            if not when:
+            dep_time = _parse_departure_time(_get_time(d))
+            if dep_time is None:
                 continue
-            try:
-                dep_time = datetime.fromisoformat(when)
-            except ValueError:
+            if dep_time <= dt_util.utcnow():
                 continue
-            if dep_time <= datetime.now(dep_time.tzinfo or timezone.utc):
-                continue
-            departures.append(d)
+            departures.append((dep_time, d))
 
         if not departures:
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
             return
 
-        departures.sort(key=_get_time)
-        first = departures[0]
+        departures.sort(key=lambda item: item[0])
+        first_time, first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         self._direction = first.get("direction")
         dest_info = first.get("destination") or {}
         destination_name = dest_info.get("name") or self._destination
-        when = _get_time(first)
-        if when:
-            try:
-                self._attr_native_value = datetime.fromisoformat(when)
-            except ValueError:
-                self._attr_native_value = when
-        else:
-            self._attr_native_value = None
+        self._attr_native_value = first_time
 
         stop = first.get("stop") or {}
         location = stop.get("location") or {}
@@ -280,7 +285,7 @@ class VbbDepartureSensor(SensorEntity):
                     "trip_id": d.get("tripId"),
                     "prognosis_type": d.get("prognosisType"),
                 }
-                for d in departures
+                for _, d in departures
             ],
         }
 
@@ -336,41 +341,30 @@ class VbbDirectionSensor(SensorEntity):
 
         self._attr_available = True
 
-        departures: list[dict[str, Any]] = []
+        departures: list[tuple[datetime, dict[str, Any]]] = []
         for d in data:
             if d.get("line", {}).get("name") != self._line:
                 continue
             if d.get("direction") != self._direction:
                 continue
-            when = _get_time(d)
-            if not when:
+            dep_time = _parse_departure_time(_get_time(d))
+            if dep_time is None:
                 continue
-            try:
-                dep_time = datetime.fromisoformat(when)
-            except ValueError:
+            if dep_time <= dt_util.utcnow():
                 continue
-            if dep_time <= datetime.now(dep_time.tzinfo or timezone.utc):
-                continue
-            departures.append(d)
+            departures.append((dep_time, d))
 
         if not departures:
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
             return
 
-        departures.sort(key=_get_time)
-        first = departures[0]
+        departures.sort(key=lambda item: item[0])
+        first_time, first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
         dest_info = first.get("destination") or {}
         destination_name = dest_info.get("name")
-        when = _get_time(first)
-        if when:
-            try:
-                self._attr_native_value = datetime.fromisoformat(when)
-            except ValueError:
-                self._attr_native_value = when
-        else:
-            self._attr_native_value = None
+        self._attr_native_value = first_time
 
         stop = first.get("stop") or {}
         location = stop.get("location") or {}
@@ -406,6 +400,6 @@ class VbbDirectionSensor(SensorEntity):
                     "trip_id": d.get("tripId"),
                     "prognosis_type": d.get("prognosisType"),
                 }
-                for d in departures
+                for _, d in departures
             ],
         }
