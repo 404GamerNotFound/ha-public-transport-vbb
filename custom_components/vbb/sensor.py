@@ -75,6 +75,20 @@ def _get_delay(entry: dict[str, Any]) -> int | None:
     return delay
 
 
+def _extract_departures(data: Any) -> list[dict[str, Any]]:
+    """Normalize API responses to a departures list."""
+
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        departures = data.get("departures")
+        if isinstance(departures, list):
+            return departures
+
+    return []
+
+
 def _parse_departure_time(value: str | None) -> datetime | None:
     """Parse a departure timestamp and normalize it to UTC."""
 
@@ -115,7 +129,9 @@ async def _async_setup_station(
             return
 
         sensors: list[SensorEntity] = []
-        for d in data:
+        departures = _extract_departures(data)
+
+        for d in departures:
             line_info = d.get("line") or {}
             if line_info.get("product") not in products:
                 continue
@@ -224,7 +240,7 @@ class VbbDepartureSensor(SensorEntity):
         self._attr_available = True
 
         departures: list[tuple[datetime, dict[str, Any]]] = []
-        for d in data:
+        for d in _extract_departures(data):
             if d.get("line", {}).get("name") != self._line:
                 continue
             dest_info = d.get("destination") or {}
@@ -342,7 +358,7 @@ class VbbDirectionSensor(SensorEntity):
         self._attr_available = True
 
         departures: list[tuple[datetime, dict[str, Any]]] = []
-        for d in data:
+        for d in _extract_departures(data):
             if d.get("line", {}).get("name") != self._line:
                 continue
             if d.get("direction") != self._direction:
