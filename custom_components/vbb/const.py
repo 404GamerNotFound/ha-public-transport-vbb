@@ -16,10 +16,12 @@ HEADERS = {
 CONF_STATION_ID = "station_id"
 CONF_DURATION = "duration"
 CONF_RESULTS = "results"
+CONF_UPDATE_INTERVAL = "update_interval"
 CONF_PRODUCTS = "products"
 DEFAULT_NAME = "VBB Departures"
 DEFAULT_DURATION = 120
 DEFAULT_RESULTS = 100
+DEFAULT_UPDATE_INTERVAL = 5
 PRODUCT_OPTIONS = [
     "suburban",
     "subway",

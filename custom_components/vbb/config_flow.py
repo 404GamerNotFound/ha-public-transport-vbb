@@ -20,10 +20,12 @@ from .const import (
     CONF_PRODUCTS,
     CONF_RESULTS,
     CONF_STATION_ID,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_PRODUCTS,
     DEFAULT_DURATION,
     DEFAULT_NAME,
     DEFAULT_RESULTS,
+    DEFAULT_UPDATE_INTERVAL,
     PRODUCT_OPTIONS,
     DOMAIN,
     NEARBY_PATH,
@@ -115,6 +117,7 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_NAME: user_input[CONF_NAME],
                 CONF_DURATION: user_input[CONF_DURATION],
                 CONF_RESULTS: user_input[CONF_RESULTS],
+                CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
             }
             options = {CONF_PRODUCTS: user_input.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)}
             await self.async_set_unique_id(self._selected_station["id"])
@@ -133,6 +136,9 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.All(int, vol.Range(min=1)),
                 vol.Optional(
                     CONF_RESULTS, default=DEFAULT_RESULTS
+                ): vol.All(int, vol.Range(min=1)),
+                vol.Optional(
+                    CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL
                 ): vol.All(int, vol.Range(min=1)),
                 vol.Optional(
                     CONF_PRODUCTS, default=DEFAULT_PRODUCTS
@@ -165,4 +171,3 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         params = {"latitude": latitude, "longitude": longitude}
         data = await async_request_json(session, NEARBY_PATH, params)
         return [s for s in data if s.get("id") and s.get("name")]
-
