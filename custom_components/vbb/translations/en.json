@@ -22,6 +22,7 @@
           "name": "Name",
           "duration": "Time span (minutes)",
           "results": "Maximum results",
+          "update_interval": "Update interval (minutes)",
           "products": "Transport types"
         }
       }

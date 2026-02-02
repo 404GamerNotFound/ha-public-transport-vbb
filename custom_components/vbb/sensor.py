@@ -26,10 +26,12 @@ from .const import (
     CONF_PRODUCTS,
     CONF_RESULTS,
     CONF_STATION_ID,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_DURATION,
     DEFAULT_PRODUCTS,
     DEFAULT_NAME,
     DEFAULT_RESULTS,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     PRODUCT_OPTIONS,
 )
@@ -42,6 +44,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             int, vol.Range(min=1)
         ),
         vol.Optional(CONF_RESULTS, default=DEFAULT_RESULTS): vol.All(
+            int, vol.Range(min=1)
+        ),
+        vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
             int, vol.Range(min=1)
         ),
         vol.Optional(
@@ -112,6 +117,7 @@ async def _async_setup_station(
     duration: int,
     results: int,
     products: list[str],
+    update_interval: int,
     async_add_entities,
 ) -> None:
     """Set up sensors for a station and add new ones dynamically."""
@@ -125,7 +131,14 @@ async def _async_setup_station(
     async_add_entities(
         [
             VbbStationSensor(
-                hass, station_id, name, duration, results, products, session
+                hass,
+                station_id,
+                name,
+                duration,
+                results,
+                products,
+                update_interval,
+                session,
             )
         ],
         True,
@@ -155,14 +168,28 @@ async def _async_setup_station(
                 known_pairs.add((line, destination))
                 sensors.append(
                     VbbDepartureSensor(
-                        hass, station_id, name, line, destination, duration, results
+                        hass,
+                        station_id,
+                        name,
+                        line,
+                        destination,
+                        duration,
+                        results,
+                        update_interval,
                     )
                 )
             if line and direction and (line, direction) not in known_dirs:
                 known_dirs.add((line, direction))
                 sensors.append(
                     VbbDirectionSensor(
-                        hass, station_id, name, line, direction, duration, results
+                        hass,
+                        station_id,
+                        name,
+                        line,
+                        direction,
+                        duration,
+                        results,
+                        update_interval,
                     )
                 )
 
@@ -170,7 +197,9 @@ async def _async_setup_station(
             async_add_entities(sensors, True)
 
     await discover()
-    async_track_time_interval(hass, discover, timedelta(minutes=5))
+    async_track_time_interval(
+        hass, discover, timedelta(minutes=update_interval)
+    )
 
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
@@ -180,8 +209,16 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     duration = config.get(CONF_DURATION, DEFAULT_DURATION)
     results = config.get(CONF_RESULTS, DEFAULT_RESULTS)
     products = config.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
+    update_interval = config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     await _async_setup_station(
-        hass, station_id, name, duration, results, products, async_add_entities
+        hass,
+        station_id,
+        name,
+        duration,
+        results,
+        products,
+        update_interval,
+        async_add_entities,
     )
 
 
@@ -194,8 +231,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
     products = entry.options.get(
         CONF_PRODUCTS, entry.data.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
     )
+    update_interval = entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     await _async_setup_station(
-        hass, station_id, name, duration, results, products, async_add_entities
+        hass,
+        station_id,
+        name,
+        duration,
+        results,
+        products,
+        update_interval,
+        async_add_entities,
     )
 
 
@@ -214,6 +259,7 @@ class VbbDepartureSensor(SensorEntity):
         destination: str,
         duration: int,
         results: int,
+        update_interval: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
@@ -228,6 +274,7 @@ class VbbDepartureSensor(SensorEntity):
             f"vbb_{station_id}_{slugify(line)}_{slugify(destination)}"
         )
         self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
         self._session = async_get_clientsession(hass)
 
     @property
@@ -332,6 +379,7 @@ class VbbStationSensor(SensorEntity):
         duration: int,
         results: int,
         products: list[str],
+        update_interval: int,
         session,
     ) -> None:
         self.hass = hass
@@ -344,6 +392,7 @@ class VbbStationSensor(SensorEntity):
         self._attr_name = station_name
         self._attr_unique_id = f"vbb_{station_id}_station"
         self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -424,6 +473,7 @@ class VbbDirectionSensor(SensorEntity):
         direction: str,
         duration: int,
         results: int,
+        update_interval: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
@@ -437,6 +487,7 @@ class VbbDirectionSensor(SensorEntity):
             f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}_dir"
         )
         self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
         self._session = async_get_clientsession(hass)
 
     @property
