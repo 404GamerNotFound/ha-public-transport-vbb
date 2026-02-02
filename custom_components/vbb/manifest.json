@@ -1,12 +1,12 @@
 {
   "domain": "vbb",
   "name": "VBB Public Transport",
-  "version": "0.7.0",
-  "documentation": "https://github.com/404GamerNotFound/ha-public-transport-vbb",
-  "issue_tracker": "https://github.com/404GamerNotFound/ha-public-transport-vbb/issues",
-  "requirements": [],
   "codeowners": ["@404GamerNotFound"],
   "config_flow": true,
+  "documentation": "https://github.com/404GamerNotFound/ha-public-transport-vbb",
+  "integration_type": "service",
   "iot_class": "cloud_polling",
-  "integration_type": "service"
+  "issue_tracker": "https://github.com/404GamerNotFound/ha-public-transport-vbb/issues",
+  "requirements": [],
+  "version": "0.7.0"
 }
