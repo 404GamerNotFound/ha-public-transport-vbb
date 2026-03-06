@@ -295,7 +295,7 @@ class VbbDepartureSensor(SensorEntity):
                 self._session, API_PATH.format(station=self._station_id), params
             )
         except Exception:
-            self._attr_available = False
+            # Keep the last successful state when the API is temporarily unreachable.
             return
 
         self._attr_available = True
@@ -414,7 +414,7 @@ class VbbStationSensor(SensorEntity):
                 self._session, API_PATH.format(station=self._station_id), params
             )
         except Exception:
-            self._attr_available = False
+            # Keep the last successful state when the API is temporarily unreachable.
             return
 
         departures: list[tuple[datetime, dict[str, Any]]] = []
@@ -510,7 +510,7 @@ class VbbDirectionSensor(SensorEntity):
                 self._session, API_PATH.format(station=self._station_id), params
             )
         except Exception:
-            self._attr_available = False
+            # Keep the last successful state when the API is temporarily unreachable.
             return
 
         self._attr_available = True
