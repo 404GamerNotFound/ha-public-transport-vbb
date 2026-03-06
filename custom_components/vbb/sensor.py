@@ -180,18 +180,20 @@ async def _async_setup_station(
                 )
             if line and direction and (line, direction) not in known_dirs:
                 known_dirs.add((line, direction))
-                sensors.append(
-                    VbbDirectionSensor(
-                        hass,
-                        station_id,
-                        name,
-                        line,
-                        direction,
-                        duration,
-                        results,
-                        update_interval,
+                for departure_index in range(3):
+                    sensors.append(
+                        VbbDirectionSensor(
+                            hass,
+                            station_id,
+                            name,
+                            line,
+                            direction,
+                            duration,
+                            results,
+                            update_interval,
+                            departure_index,
+                        )
                     )
-                )
 
         if sensors:
             async_add_entities(sensors, True)
@@ -474,6 +476,7 @@ class VbbDirectionSensor(SensorEntity):
         duration: int,
         results: int,
         update_interval: int,
+        departure_index: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
@@ -482,9 +485,10 @@ class VbbDirectionSensor(SensorEntity):
         self._direction = direction
         self._duration = duration
         self._results = results
-        self._attr_name = f"{line} {direction}"
+        self._departure_index = departure_index
+        self._attr_name = f"{line} {direction} {departure_index + 1}"
         self._attr_unique_id = (
-            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}_dir"
+            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}_dir_{departure_index + 1}"
         )
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._attr_scan_interval = timedelta(minutes=update_interval)
@@ -530,22 +534,44 @@ class VbbDirectionSensor(SensorEntity):
             return
 
         departures.sort(key=lambda item: item[0])
-        first_time, first = departures[0]
-        self._station_name = first.get("stop", {}).get("name", self._station_name)
-        dest_info = first.get("destination") or {}
-        destination_name = dest_info.get("name")
-        self._attr_native_value = first_time
+        if len(departures) <= self._departure_index:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {
+                "line": self._line,
+                "direction": self._direction,
+                "departure_slot": self._departure_index + 1,
+                "station_id": self._station_id,
+                "departures": [
+                    {
+                        "when": _get_time(d),
+                        "delay": _get_delay(d),
+                        "platform": d.get("platform"),
+                        "destination": (d.get("destination") or {}).get("name"),
+                        "trip_id": d.get("tripId"),
+                        "prognosis_type": d.get("prognosisType"),
+                    }
+                    for _, d in departures
+                ],
+            }
+            return
 
-        stop = first.get("stop") or {}
+        selected_time, selected = departures[self._departure_index]
+        self._station_name = selected.get("stop", {}).get("name", self._station_name)
+        dest_info = selected.get("destination") or {}
+        destination_name = dest_info.get("name")
+        self._attr_native_value = selected_time
+
+        stop = selected.get("stop") or {}
         location = stop.get("location") or {}
-        line_info = first.get("line") or {}
-        origin_info = first.get("origin") or {}
-        current_pos = first.get("currentTripPosition") or None
-        delay = _get_delay(first)
+        line_info = selected.get("line") or {}
+        origin_info = selected.get("origin") or {}
+        current_pos = selected.get("currentTripPosition") or None
+        delay = _get_delay(selected)
 
         self._attr_extra_state_attributes = {
             "line": self._line,
             "direction": self._direction,
+            "departure_slot": self._departure_index + 1,
             "destination": destination_name,
             "station_id": self._station_id,
             "station_name": stop.get("name"),
@@ -556,9 +582,9 @@ class VbbDirectionSensor(SensorEntity):
             "mode": line_info.get("mode"),
             "product": line_info.get("product"),
             "operator": line_info.get("operator", {}).get("name"),
-            "trip_id": first.get("tripId"),
+            "trip_id": selected.get("tripId"),
             "delay": delay,
-            "prognosis_type": first.get("prognosisType"),
+            "prognosis_type": selected.get("prognosisType"),
             "origin": origin_info.get("name"),
             "current_trip_position": current_pos or None,
             "departures": [
