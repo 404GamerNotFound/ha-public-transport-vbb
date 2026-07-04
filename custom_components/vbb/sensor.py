@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Any
-from collections import defaultdict
 
-import async_timeout
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -18,17 +16,24 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.util import slugify
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import slugify, dt as dt_util
 
+from .api import async_request_json
 from .const import (
-    API_URL,
+    API_PATH,
     CONF_DURATION,
+    CONF_PRODUCTS,
     CONF_RESULTS,
     CONF_STATION_ID,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_DURATION,
+    DEFAULT_PRODUCTS,
     DEFAULT_NAME,
     DEFAULT_RESULTS,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    PRODUCT_OPTIONS,
 )
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -41,8 +46,162 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_RESULTS, default=DEFAULT_RESULTS): vol.All(
             int, vol.Range(min=1)
         ),
+        vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
+            int, vol.Range(min=1)
+        ),
+        vol.Optional(
+            CONF_PRODUCTS, default=DEFAULT_PRODUCTS
+        ): vol.All(cv.ensure_list, [vol.In(PRODUCT_OPTIONS)]),
     }
 )
+
+
+def _get_time(entry: dict[str, Any]) -> str | None:
+    """Return the best available departure time field."""
+    return (
+        entry.get("plannedWhen")
+        or entry.get("when")
+        or entry.get("plannedDeparture")
+        or entry.get("departure")
+    )
+
+
+def _get_delay(entry: dict[str, Any]) -> int | None:
+    """Return delay in minutes if available."""
+    delay = (
+        entry.get("delay")
+        or entry.get("departureDelay")
+        or entry.get("delayInSeconds")
+    )
+    if delay is None:
+        return None
+    if isinstance(delay, int) and abs(delay) > 10:
+        return delay // 60
+    return delay
+
+
+def _extract_departures(data: Any) -> list[dict[str, Any]]:
+    """Normalize API responses to a departures list."""
+
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        departures = data.get("departures")
+        if isinstance(departures, list):
+            return departures
+
+    return []
+
+
+def _parse_departure_time(value: str | None) -> datetime | None:
+    """Parse a departure timestamp and normalize it to UTC."""
+
+    if not value:
+        return None
+
+    parsed = dt_util.parse_datetime(value)
+    if parsed is None:
+        return None
+
+    try:
+        return dt_util.as_utc(parsed)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _async_setup_station(
+    hass,
+    station_id: str,
+    name: str,
+    duration: int,
+    results: int,
+    products: list[str],
+    update_interval: int,
+    async_add_entities,
+) -> None:
+    """Set up sensors for a station and add new ones dynamically."""
+    session = async_get_clientsession(hass)
+    known_pairs: set[tuple[str, str]] = set()
+    known_dirs: set[tuple[str, str]] = set()
+
+    # Always expose a station-level sensor so the integration still provides
+    # departure times even if no specific line/destination combinations are
+    # discovered (for example due to temporary API errors).
+    async_add_entities(
+        [
+            VbbStationSensor(
+                hass,
+                station_id,
+                name,
+                duration,
+                results,
+                products,
+                update_interval,
+                session,
+            )
+        ],
+        True,
+    )
+
+    async def discover(now=None):
+        params = {"duration": duration, "results": results}
+        try:
+            data = await async_request_json(
+                session, API_PATH.format(station=station_id), params
+            )
+        except Exception:
+            return
+
+        sensors: list[SensorEntity] = []
+        departures = _extract_departures(data)
+
+        for d in departures:
+            line_info = d.get("line") or {}
+            if line_info.get("product") not in products:
+                continue
+            line = line_info.get("name")
+            dest_info = d.get("destination") or {}
+            destination = dest_info.get("name") or d.get("direction")
+            direction = d.get("direction")
+            if line and destination and (line, destination) not in known_pairs:
+                known_pairs.add((line, destination))
+                sensors.append(
+                    VbbDepartureSensor(
+                        hass,
+                        station_id,
+                        name,
+                        line,
+                        destination,
+                        duration,
+                        results,
+                        update_interval,
+                    )
+                )
+            if line and direction and (line, direction) not in known_dirs:
+                known_dirs.add((line, direction))
+                for departure_index in range(3):
+                    sensors.append(
+                        VbbDirectionSensor(
+                            hass,
+                            station_id,
+                            name,
+                            line,
+                            direction,
+                            duration,
+                            results,
+                            update_interval,
+                            departure_index,
+                        )
+                    )
+
+        if sensors:
+            async_add_entities(sensors, True)
+
+    await discover()
+    async_track_time_interval(
+        hass, discover, timedelta(minutes=update_interval)
+    )
 
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
@@ -51,25 +210,18 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     name = config[CONF_NAME]
     duration = config.get(CONF_DURATION, DEFAULT_DURATION)
     results = config.get(CONF_RESULTS, DEFAULT_RESULTS)
-    session = async_get_clientsession(hass)
-    url = API_URL.format(station=station_id, duration=duration, results=results)
-    async with async_timeout.timeout(10):
-        resp = await session.get(url)
-        data = await resp.json()
-    lines: dict[str, set[str]] = defaultdict(set)
-    for d in data:
-        line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction:
-            lines[line].add(direction)
-    sensors = [
-        VbbDepartureSensor(
-            hass, station_id, name, line, direction, duration, results
-        )
-        for line, directions in lines.items()
-        for direction in directions
-    ]
-    async_add_entities(sensors, True)
+    products = config.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
+    update_interval = config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    await _async_setup_station(
+        hass,
+        station_id,
+        name,
+        duration,
+        results,
+        products,
+        update_interval,
+        async_add_entities,
+    )
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -78,25 +230,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
     name = entry.data[CONF_NAME]
     duration = entry.data.get(CONF_DURATION, DEFAULT_DURATION)
     results = entry.data.get(CONF_RESULTS, DEFAULT_RESULTS)
-    session = async_get_clientsession(hass)
-    url = API_URL.format(station=station_id, duration=duration, results=results)
-    async with async_timeout.timeout(10):
-        resp = await session.get(url)
-        data = await resp.json()
-    lines: dict[str, set[str]] = defaultdict(set)
-    for d in data:
-        line = d.get("line", {}).get("name")
-        direction = d.get("direction")
-        if line and direction:
-            lines[line].add(direction)
-    sensors = [
-        VbbDepartureSensor(
-            hass, station_id, name, line, direction, duration, results
-        )
-        for line, directions in lines.items()
-        for direction in directions
-    ]
-    async_add_entities(sensors, True)
+    products = entry.options.get(
+        CONF_PRODUCTS, entry.data.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
+    )
+    update_interval = entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    await _async_setup_station(
+        hass,
+        station_id,
+        name,
+        duration,
+        results,
+        products,
+        update_interval,
+        async_add_entities,
+    )
 
 
 class VbbDepartureSensor(SensorEntity):
@@ -111,22 +258,25 @@ class VbbDepartureSensor(SensorEntity):
         station_id: str,
         station_name: str,
         line: str,
-        direction: str,
+        destination: str,
         duration: int,
         results: int,
+        update_interval: int,
     ) -> None:
         self.hass = hass
         self._station_id = station_id
         self._station_name = station_name
         self._line = line
-        self._direction = direction
+        self._destination = destination
+        self._direction: str | None = None
         self._duration = duration
         self._results = results
-        self._attr_name = f"{line} {direction}"
+        self._attr_name = f"{line} {destination}"
         self._attr_unique_id = (
-            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}"
+            f"vbb_{station_id}_{slugify(line)}_{slugify(destination)}"
         )
         self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
         self._session = async_get_clientsession(hass)
 
     @property
@@ -139,64 +289,313 @@ class VbbDepartureSensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch departures from the VBB API."""
-        url = API_URL.format(
-            station=self._station_id, duration=self._duration, results=self._results
-        )
-        async with async_timeout.timeout(10):
-            resp = await self._session.get(url)
-            data = await resp.json()
+        params = {"duration": self._duration, "results": self._results}
+        try:
+            data = await async_request_json(
+                self._session, API_PATH.format(station=self._station_id), params
+            )
+        except Exception:
+            # Keep the last successful state when the API is temporarily unreachable.
+            return
 
-        departures: list[dict[str, Any]] = []
-        for d in data:
+        self._attr_available = True
+
+        departures: list[tuple[datetime, dict[str, Any]]] = []
+        for d in _extract_departures(data):
             if d.get("line", {}).get("name") != self._line:
                 continue
-            if d.get("direction") != self._direction:
+            dest_info = d.get("destination") or {}
+            dest_name = dest_info.get("name") or d.get("direction")
+            if dest_name != self._destination:
                 continue
-            when = d.get("plannedWhen") or d.get("when")
-            if not when:
+            dep_time = _parse_departure_time(_get_time(d))
+            if dep_time is None:
                 continue
-            try:
-                dep_time = datetime.fromisoformat(when)
-            except ValueError:
+            if dep_time <= dt_util.utcnow():
                 continue
-            if dep_time <= datetime.now(dep_time.tzinfo or timezone.utc):
-                continue
-            departures.append(d)
+            departures.append((dep_time, d))
 
         if not departures:
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
             return
 
-        departures.sort(key=lambda d: d.get("plannedWhen") or d.get("when"))
-        first = departures[0]
+        departures.sort(key=lambda item: item[0])
+        first_time, first = departures[0]
         self._station_name = first.get("stop", {}).get("name", self._station_name)
-        when = first.get("plannedWhen") or first.get("when")
-        if when:
-            try:
-                self._attr_native_value = datetime.fromisoformat(when)
-            except ValueError:
-                self._attr_native_value = when
-        else:
-            self._attr_native_value = None
+        self._direction = first.get("direction")
+        dest_info = first.get("destination") or {}
+        destination_name = dest_info.get("name") or self._destination
+        self._attr_native_value = first_time
 
-        stop = first.get("stop", {})
-        location = stop.get("location", {})
+        stop = first.get("stop") or {}
+        location = stop.get("location") or {}
+        line_info = first.get("line") or {}
+        origin_info = first.get("origin") or {}
+        current_pos = first.get("currentTripPosition") or None
+        delay = _get_delay(first)
+
+        self._attr_extra_state_attributes = {
+            "line": self._line,
+            "destination": destination_name,
+            "direction": self._direction,
+            "station_id": self._station_id,
+            "station_name": stop.get("name"),
+            "station_dhid": stop.get("stationDHID"),
+            "latitude": location.get("latitude"),
+            "longitude": location.get("longitude"),
+            "line_id": line_info.get("id"),
+            "mode": line_info.get("mode"),
+            "product": line_info.get("product"),
+            "operator": line_info.get("operator", {}).get("name"),
+            "trip_id": first.get("tripId"),
+            "delay": delay,
+            "prognosis_type": first.get("prognosisType"),
+            "origin": origin_info.get("name"),
+            "current_trip_position": current_pos or None,
+            "departures": [
+                {
+                    "when": _get_time(d),
+                    "delay": _get_delay(d),
+                    "platform": d.get("platform"),
+                    "destination": (d.get("destination") or {}).get("name"),
+                    "trip_id": d.get("tripId"),
+                    "prognosis_type": d.get("prognosisType"),
+                }
+                for _, d in departures
+            ],
+        }
+
+
+class VbbStationSensor(SensorEntity):
+    """Aggregate next departures for an entire station."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:train-clock"
+
+    def __init__(
+        self,
+        hass,
+        station_id: str,
+        station_name: str,
+        duration: int,
+        results: int,
+        products: list[str],
+        update_interval: int,
+        session,
+    ) -> None:
+        self.hass = hass
+        self._station_id = station_id
+        self._station_name = station_name
+        self._duration = duration
+        self._results = results
+        self._products = set(products)
+        self._session = session
+        self._attr_name = station_name
+        self._attr_unique_id = f"vbb_{station_id}_station"
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._station_id)},
+            name=self._station_name,
+            manufacturer="VBB",
+        )
+
+    async def async_update(self) -> None:
+        """Fetch the next departure for the station."""
+
+        params = {"duration": self._duration, "results": self._results}
+
+        try:
+            data = await async_request_json(
+                self._session, API_PATH.format(station=self._station_id), params
+            )
+        except Exception:
+            # Keep the last successful state when the API is temporarily unreachable.
+            return
+
+        departures: list[tuple[datetime, dict[str, Any]]] = []
+        for dep in _extract_departures(data):
+            product = dep.get("line", {}).get("product")
+            if product and product not in self._products:
+                continue
+            dep_time = _parse_departure_time(_get_time(dep))
+            if dep_time is None or dep_time <= dt_util.utcnow():
+                continue
+            departures.append((dep_time, dep))
+
+        if not departures:
+            self._attr_available = True
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
+
+        departures.sort(key=lambda item: item[0])
+        first_time, first = departures[0]
+        self._attr_available = True
+        self._attr_native_value = first_time
+
+        stop = first.get("stop") or {}
+        line_info = first.get("line") or {}
+        destination = (first.get("destination") or {}).get("name")
+
+        self._attr_extra_state_attributes = {
+            "line": line_info.get("name"),
+            "destination": destination,
+            "station_id": self._station_id,
+            "station_name": stop.get("name", self._station_name),
+            "product": line_info.get("product"),
+            "departures": [
+                {
+                    "when": _get_time(dep),
+                    "delay": _get_delay(dep),
+                    "line": (dep.get("line") or {}).get("name"),
+                    "destination": (dep.get("destination") or {}).get("name"),
+                }
+                for _, dep in departures
+            ],
+        }
+
+
+class VbbDirectionSensor(SensorEntity):
+    """Representation of a VBB direction sensor aggregating all destinations."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:train"
+
+    def __init__(
+        self,
+        hass,
+        station_id: str,
+        station_name: str,
+        line: str,
+        direction: str,
+        duration: int,
+        results: int,
+        update_interval: int,
+        departure_index: int,
+    ) -> None:
+        self.hass = hass
+        self._station_id = station_id
+        self._station_name = station_name
+        self._line = line
+        self._direction = direction
+        self._duration = duration
+        self._results = results
+        self._departure_index = departure_index
+        self._attr_name = f"{line} {direction} {departure_index + 1}"
+        self._attr_unique_id = (
+            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}_dir_{departure_index + 1}"
+        )
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._attr_scan_interval = timedelta(minutes=update_interval)
+        self._session = async_get_clientsession(hass)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._station_id)},
+            name=self._station_name,
+            manufacturer="VBB",
+        )
+
+    async def async_update(self) -> None:
+        """Fetch departures from the VBB API."""
+        params = {"duration": self._duration, "results": self._results}
+        try:
+            data = await async_request_json(
+                self._session, API_PATH.format(station=self._station_id), params
+            )
+        except Exception:
+            # Keep the last successful state when the API is temporarily unreachable.
+            return
+
+        self._attr_available = True
+
+        departures: list[tuple[datetime, dict[str, Any]]] = []
+        for d in _extract_departures(data):
+            if d.get("line", {}).get("name") != self._line:
+                continue
+            if d.get("direction") != self._direction:
+                continue
+            dep_time = _parse_departure_time(_get_time(d))
+            if dep_time is None:
+                continue
+            if dep_time <= dt_util.utcnow():
+                continue
+            departures.append((dep_time, d))
+
+        if not departures:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
+
+        departures.sort(key=lambda item: item[0])
+        if len(departures) <= self._departure_index:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {
+                "line": self._line,
+                "direction": self._direction,
+                "departure_slot": self._departure_index + 1,
+                "station_id": self._station_id,
+                "departures": [
+                    {
+                        "when": _get_time(d),
+                        "delay": _get_delay(d),
+                        "platform": d.get("platform"),
+                        "destination": (d.get("destination") or {}).get("name"),
+                        "trip_id": d.get("tripId"),
+                        "prognosis_type": d.get("prognosisType"),
+                    }
+                    for _, d in departures
+                ],
+            }
+            return
+
+        selected_time, selected = departures[self._departure_index]
+        self._station_name = selected.get("stop", {}).get("name", self._station_name)
+        dest_info = selected.get("destination") or {}
+        destination_name = dest_info.get("name")
+        self._attr_native_value = selected_time
+
+        stop = selected.get("stop") or {}
+        location = stop.get("location") or {}
+        line_info = selected.get("line") or {}
+        origin_info = selected.get("origin") or {}
+        current_pos = selected.get("currentTripPosition") or None
+        delay = _get_delay(selected)
 
         self._attr_extra_state_attributes = {
             "line": self._line,
             "direction": self._direction,
+            "departure_slot": self._departure_index + 1,
+            "destination": destination_name,
             "station_id": self._station_id,
             "station_name": stop.get("name"),
+            "station_dhid": stop.get("stationDHID"),
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
+            "line_id": line_info.get("id"),
+            "mode": line_info.get("mode"),
+            "product": line_info.get("product"),
+            "operator": line_info.get("operator", {}).get("name"),
+            "trip_id": selected.get("tripId"),
+            "delay": delay,
+            "prognosis_type": selected.get("prognosisType"),
+            "origin": origin_info.get("name"),
+            "current_trip_position": current_pos or None,
             "departures": [
                 {
-                    "when": d.get("plannedWhen") or d.get("when"),
-                    "delay": d.get("delay"),
+                    "when": _get_time(d),
+                    "delay": _get_delay(d),
                     "platform": d.get("platform"),
-                    "destination": d.get("destination", {}).get("name"),
+                    "destination": (d.get("destination") or {}).get("name"),
+                    "trip_id": d.get("tripId"),
+                    "prognosis_type": d.get("prognosisType"),
                 }
-                for d in departures
+                for _, d in departures
             ],
         }

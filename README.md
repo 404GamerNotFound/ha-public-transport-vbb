@@ -1,25 +1,24 @@
-# HA Public Transport VBB
+# ha-public-transport-vbb
 
-Dieses Repository stellt ein einfaches Home-Assistant Plugin bereit, um
-Abfahrtszeiten des Verkehrsverbunds Berlin-Brandenburg (VBB) abzurufen und
-als Sensor anzuzeigen. Jede konfigurierte Haltestelle wird in Home Assistant
-als eigenes Gerät dargestellt.
+Home Assistant integration for public transport departures in Berlin-Brandenburg (VBB).
 
-## Beispiel
+## Availability
 
-![Beispielbild Berlin Hauptbahnhof](images/Hauptbahnhof.png)
+The integration provides data for stops served by the Verkehrsverbund Berlin-Brandenburg and is therefore only relevant for installations located in Germany.
 
-## Installation
+## Installation via HACS
 
-Die Integration kann bequem über [HACS](https://hacs.xyz/) installiert
-werden:
+This repository is available as a [default repository in HACS](https://hacs.xyz/). Install it by navigating to **HACS → Integrations**, searching for **VBB Public Transport** and completing the installation flow. Afterwards restart Home Assistant so the integration becomes available under **Settings → Devices & Services → Add Integration**.
 
-1. Füge dieses Repository in HACS als benutzerdefiniertes Repository hinzu.
-2. Suche nach "VBB Public Transport" und installiere die Integration.
-3. Starte Home Assistant neu.
+The integration requires Home Assistant 2023.12 or newer.
 
-Alternativ kann der Ordner `custom_components/vbb` manuell in das
-`custom_components` Verzeichnis kopiert werden.
+## Languages
+
+- [Deutsch](README.de.md)
+- [English](README.en.md)
+- [Français](README.fr.md)
+- [Español](README.es.md)
+- [Polski](README.pl.md)
 
 ## Konfiguration
 
@@ -52,3 +51,4 @@ Dieses Repository wurde von [404GamerNotFound](https://github.com/404GamerNotFou
 ## Support
 
 If you find this project helpful, you can support it via PayPal: [paypal.me/TonyBrueser](https://www.paypal.com/paypalme/TonyBrueser)
+
