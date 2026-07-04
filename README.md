@@ -48,3 +48,7 @@ Ergebnisse abgefragt. Diese Werte lassen sich in der Konfiguration anpassen.
 ## Autor
 
 Dieses Repository wurde von [404GamerNotFound](https://github.com/404GamerNotFound) (Tony Brüser) erstellt.
+
+## Support
+
+If you find this project helpful, you can support it via PayPal: [paypal.me/TonyBrueser](https://www.paypal.com/paypalme/TonyBrueser)
