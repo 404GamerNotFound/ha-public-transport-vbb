@@ -29,7 +29,22 @@
     },
     "error": {
       "no_input": "Bitte Stationsnamen oder Koordinaten angeben.",
-      "no_stations": "Keine Haltestellen gefunden."
+      "no_stations": "Keine Haltestellen gefunden.",
+      "cannot_connect": "Die VBB-API ist gerade nicht erreichbar. Bitte später erneut versuchen."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "VBB-Einstellungen",
+        "description": "Alle Sensoren einer Haltestelle teilen sich einen Abruf. Ein kürzeres Intervall bedeutet aktuellere Verspätungen, aber mehr API-Anfragen.",
+        "data": {
+          "update_interval": "Update-Intervall (Minuten)",
+          "duration": "Zeitraum (Minuten)",
+          "results": "Maximale Ergebnisse",
+          "products": "Verkehrsmittel"
+        }
+      }
     }
   }
 }

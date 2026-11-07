@@ -1,5 +1,10 @@
 # ha-public-transport-vbb
 
+[![Stars](https://img.shields.io/github/stars/404GamerNotFound/HA-Public-Transport-VBB?style=for-the-badge&logo=github&logoColor=white&label=Stars&color=blue)](https://github.com/404GamerNotFound/HA-Public-Transport-VBB/stargazers)
+[![Sponsors](https://img.shields.io/github/sponsors/404GamerNotFound?style=for-the-badge&logo=github&logoColor=white&label=Sponsors&color=blue)](https://github.com/sponsors/404GamerNotFound)
+[![PayPal](https://img.shields.io/badge/PayPal-ME-blue?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/TonyBrueser)
+[![Revolut](https://img.shields.io/badge/Revolut-ME-blue?style=for-the-badge&logo=revolut&logoColor=white)](https://revolut.me/tony1995)
+
 Home Assistant integration for public transport departures in Berlin-Brandenburg (VBB).
 
 ## Availability
@@ -10,7 +15,7 @@ The integration provides data for stops served by the Verkehrsverbund Berlin-Bra
 
 This repository is available as a [default repository in HACS](https://hacs.xyz/). Install it by navigating to **HACS → Integrations**, searching for **VBB Public Transport** and completing the installation flow. Afterwards restart Home Assistant so the integration becomes available under **Settings → Devices & Services → Add Integration**.
 
-The integration requires Home Assistant 2023.12 or newer.
+The integration requires Home Assistant 2024.12 or newer.
 
 ## Languages
 
@@ -38,8 +43,16 @@ bereitgestellt. Zusätzlich werden Informationen zur Haltestelle wie
 ## Hinweise
 
 Die Integration verwendet die öffentliche API unter
-`https://v5.vbb.transport.rest/`. Für die Verwendung ist eine funktionierende
-Internetverbindung erforderlich.
+`https://v6.vbb.transport.rest/` (Fallback: `v5`). Für die Verwendung ist eine
+funktionierende Internetverbindung erforderlich.
+
+Alle Sensoren einer Haltestelle teilen sich **einen** API-Abruf pro
+Update-Intervall (Standard: 5 Minuten). Fährt die angezeigte Verbindung ab,
+springt der Sensor sofort auf die nächste – ohne zusätzliche Anfrage.
+Intervall, Zeitraum, Ergebnisanzahl und Verkehrsmittel lassen sich nachträglich
+über **Konfigurieren** ändern. Der Sensorwert ist die Echtzeit-Abfahrt
+(inkl. Verspätung); die Fahrplanzeit steht im Attribut `planned_when`.
+Ausgefallene Fahrten werden nicht angezeigt.
 
 Standardmäßig werden die Abfahrten für 120 Minuten im Voraus und maximal 100
 Ergebnisse abgefragt. Diese Werte lassen sich in der Konfiguration anpassen.
@@ -51,4 +64,3 @@ Dieses Repository wurde von [404GamerNotFound](https://github.com/404GamerNotFou
 ## Support
 
 If you find this project helpful, you can support it via PayPal: [paypal.me/TonyBrueser](https://www.paypal.com/paypalme/TonyBrueser)
-

@@ -29,7 +29,22 @@
     },
     "error": {
       "no_input": "Provide a station name or coordinates.",
-      "no_stations": "No stations found."
+      "no_stations": "No stations found.",
+      "cannot_connect": "The VBB API is currently unreachable. Please try again later."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "VBB settings",
+        "description": "All sensors of a station share one request. A shorter interval gives fresher delays but more API requests.",
+        "data": {
+          "update_interval": "Update interval (minutes)",
+          "duration": "Time span (minutes)",
+          "results": "Maximum results",
+          "products": "Transport types"
+        }
+      }
     }
   }
 }

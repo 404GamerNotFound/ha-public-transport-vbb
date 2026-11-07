@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import voluptuous as vol
@@ -13,28 +13,31 @@ from homeassistant.components.sensor import (
     SensorEntity,
 )
 from homeassistant.const import CONF_NAME
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.util import slugify, dt as dt_util
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.event import async_track_point_in_utc_time
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util, slugify
 
-from .api import async_request_json
+from . import VbbConfigEntry
 from .const import (
-    API_PATH,
     CONF_DURATION,
     CONF_PRODUCTS,
     CONF_RESULTS,
     CONF_STATION_ID,
     CONF_UPDATE_INTERVAL,
     DEFAULT_DURATION,
-    DEFAULT_PRODUCTS,
     DEFAULT_NAME,
+    DEFAULT_PRODUCTS,
     DEFAULT_RESULTS,
     DEFAULT_UPDATE_INTERVAL,
+    DIRECTION_SLOTS,
     DOMAIN,
+    MAX_ATTRIBUTE_DEPARTURES,
     PRODUCT_OPTIONS,
 )
+from .coordinator import Departure, StationConfig, VbbCoordinator
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -49,553 +52,311 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
             int, vol.Range(min=1)
         ),
-        vol.Optional(
-            CONF_PRODUCTS, default=DEFAULT_PRODUCTS
-        ): vol.All(cv.ensure_list, [vol.In(PRODUCT_OPTIONS)]),
+        vol.Optional(CONF_PRODUCTS, default=DEFAULT_PRODUCTS): vol.All(
+            cv.ensure_list, [vol.In(PRODUCT_OPTIONS)]
+        ),
     }
 )
 
 
-def _get_time(entry: dict[str, Any]) -> str | None:
-    """Return the best available departure time field."""
-    return (
-        entry.get("plannedWhen")
-        or entry.get("when")
-        or entry.get("plannedDeparture")
-        or entry.get("departure")
-    )
-
-
-def _get_delay(entry: dict[str, Any]) -> int | None:
-    """Return delay in minutes if available."""
-    delay = (
-        entry.get("delay")
-        or entry.get("departureDelay")
-        or entry.get("delayInSeconds")
-    )
-    if delay is None:
-        return None
-    if isinstance(delay, int) and abs(delay) > 10:
-        return delay // 60
-    return delay
-
-
-def _extract_departures(data: Any) -> list[dict[str, Any]]:
-    """Normalize API responses to a departures list."""
-
-    if isinstance(data, list):
-        return data
-
-    if isinstance(data, dict):
-        departures = data.get("departures")
-        if isinstance(departures, list):
-            return departures
-
-    return []
-
-
-def _parse_departure_time(value: str | None) -> datetime | None:
-    """Parse a departure timestamp and normalize it to UTC."""
-
-    if not value:
-        return None
-
-    parsed = dt_util.parse_datetime(value)
-    if parsed is None:
-        return None
-
-    try:
-        return dt_util.as_utc(parsed)
-    except (TypeError, ValueError):
-        return None
-
-
-async def _async_setup_station(
-    hass,
-    station_id: str,
-    name: str,
-    duration: int,
-    results: int,
-    products: list[str],
-    update_interval: int,
-    async_add_entities,
+async def async_setup_entry(
+    hass: HomeAssistant, entry: VbbConfigEntry, async_add_entities
 ) -> None:
-    """Set up sensors for a station and add new ones dynamically."""
-    session = async_get_clientsession(hass)
-    known_pairs: set[tuple[str, str]] = set()
-    known_dirs: set[tuple[str, str]] = set()
+    """Set up VBB sensors from a config entry."""
+    coordinator = entry.runtime_data
+    entry.async_on_unload(_async_setup_entities(coordinator, async_add_entities))
 
-    # Always expose a station-level sensor so the integration still provides
-    # departure times even if no specific line/destination combinations are
-    # discovered (for example due to temporary API errors).
-    async_add_entities(
-        [
-            VbbStationSensor(
-                hass,
-                station_id,
-                name,
-                duration,
-                results,
-                products,
-                update_interval,
-                session,
-            )
-        ],
-        True,
+
+async def async_setup_platform(
+    hass: HomeAssistant, config, async_add_entities, discovery_info=None
+) -> None:
+    """Set up the VBB sensor platform from legacy YAML configuration."""
+    station = StationConfig(
+        station_id=config[CONF_STATION_ID],
+        name=config[CONF_NAME],
+        duration=config[CONF_DURATION],
+        results=config[CONF_RESULTS],
+        products=frozenset(config[CONF_PRODUCTS]),
+        update_interval=config[CONF_UPDATE_INTERVAL],
     )
+    coordinator = VbbCoordinator(hass, station)
+    await coordinator.async_refresh()
+    _async_setup_entities(coordinator, async_add_entities)
 
-    async def discover(now=None):
-        params = {"duration": duration, "results": results}
-        try:
-            data = await async_request_json(
-                session, API_PATH.format(station=station_id), params
-            )
-        except Exception:
-            return
 
-        sensors: list[SensorEntity] = []
-        departures = _extract_departures(data)
+@callback
+def _async_setup_entities(
+    coordinator: VbbCoordinator, async_add_entities
+) -> CALLBACK_TYPE:
+    """Add the station sensor now and line sensors whenever new lines appear.
 
-        for d in departures:
-            line_info = d.get("line") or {}
-            if line_info.get("product") not in products:
+    Returns the listener's unsubscribe callback so it is removed on unload.
+    """
+    known_destinations: set[tuple[str, str]] = set()
+    known_directions: set[tuple[str, str]] = set()
+
+    # The station sensor always exists, even if discovery finds nothing yet.
+    async_add_entities([VbbStationSensor(coordinator)])
+
+    @callback
+    def _discover() -> None:
+        new_entities: list[SensorEntity] = []
+        for dep in coordinator.data or []:
+            if not dep.line:
                 continue
-            line = line_info.get("name")
-            dest_info = d.get("destination") or {}
-            destination = dest_info.get("name") or d.get("direction")
-            direction = d.get("direction")
-            if line and destination and (line, destination) not in known_pairs:
-                known_pairs.add((line, destination))
-                sensors.append(
-                    VbbDepartureSensor(
-                        hass,
-                        station_id,
-                        name,
-                        line,
-                        destination,
-                        duration,
-                        results,
-                        update_interval,
-                    )
+            if dep.destination and (dep.line, dep.destination) not in known_destinations:
+                known_destinations.add((dep.line, dep.destination))
+                new_entities.append(
+                    VbbDepartureSensor(coordinator, dep.line, dep.destination)
                 )
-            if line and direction and (line, direction) not in known_dirs:
-                known_dirs.add((line, direction))
-                for departure_index in range(3):
-                    sensors.append(
-                        VbbDirectionSensor(
-                            hass,
-                            station_id,
-                            name,
-                            line,
-                            direction,
-                            duration,
-                            results,
-                            update_interval,
-                            departure_index,
-                        )
-                    )
+            if dep.direction and (dep.line, dep.direction) not in known_directions:
+                known_directions.add((dep.line, dep.direction))
+                new_entities.extend(
+                    VbbDirectionSensor(coordinator, dep.line, dep.direction, index)
+                    for index in range(DIRECTION_SLOTS)
+                )
+        if new_entities:
+            async_add_entities(new_entities)
 
-        if sensors:
-            async_add_entities(sensors, True)
-
-    await discover()
-    async_track_time_interval(
-        hass, discover, timedelta(minutes=update_interval)
-    )
+    _discover()
+    return coordinator.async_add_listener(_discover)
 
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the VBB sensor platform."""
-    station_id = config[CONF_STATION_ID]
-    name = config[CONF_NAME]
-    duration = config.get(CONF_DURATION, DEFAULT_DURATION)
-    results = config.get(CONF_RESULTS, DEFAULT_RESULTS)
-    products = config.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
-    update_interval = config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-    await _async_setup_station(
-        hass,
-        station_id,
-        name,
-        duration,
-        results,
-        products,
-        update_interval,
-        async_add_entities,
-    )
-
-
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up VBB sensor from a config entry."""
-    station_id = entry.data[CONF_STATION_ID]
-    name = entry.data[CONF_NAME]
-    duration = entry.data.get(CONF_DURATION, DEFAULT_DURATION)
-    results = entry.data.get(CONF_RESULTS, DEFAULT_RESULTS)
-    products = entry.options.get(
-        CONF_PRODUCTS, entry.data.get(CONF_PRODUCTS, DEFAULT_PRODUCTS)
-    )
-    update_interval = entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-    await _async_setup_station(
-        hass,
-        station_id,
-        name,
-        duration,
-        results,
-        products,
-        update_interval,
-        async_add_entities,
-    )
-
-
-class VbbDepartureSensor(SensorEntity):
-    """Representation of a VBB departure sensor."""
+class VbbBaseSensor(CoordinatorEntity[VbbCoordinator], SensorEntity):
+    """Common behaviour of all VBB timestamp sensors."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:train"
+    # These change on every poll and would bloat the recorder database.
+    _unrecorded_attributes = frozenset(
+        {
+            "departures",
+            "current_trip_position",
+            "trip_id",
+            "delay",
+            "prognosis_type",
+            "latitude",
+            "longitude",
+        }
+    )
 
-    def __init__(
-        self,
-        hass,
-        station_id: str,
-        station_name: str,
-        line: str,
-        destination: str,
-        duration: int,
-        results: int,
-        update_interval: int,
-    ) -> None:
-        self.hass = hass
-        self._station_id = station_id
-        self._station_name = station_name
-        self._line = line
-        self._destination = destination
-        self._direction: str | None = None
-        self._duration = duration
-        self._results = results
-        self._attr_name = f"{line} {destination}"
-        self._attr_unique_id = (
-            f"vbb_{station_id}_{slugify(line)}_{slugify(destination)}"
-        )
-        self._attr_extra_state_attributes: dict[str, Any] = {}
-        self._attr_scan_interval = timedelta(minutes=update_interval)
-        self._session = async_get_clientsession(hass)
+    def __init__(self, coordinator: VbbCoordinator) -> None:
+        super().__init__(coordinator)
+        self._station = coordinator.station
+        self._unsub_rollover: CALLBACK_TYPE | None = None
+        self._attr_extra_state_attributes = {}
 
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=self._station_name,
+            identifiers={(DOMAIN, self._station.station_id)},
+            name=self._station.name,
             manufacturer="VBB",
         )
 
-    async def async_update(self) -> None:
-        """Fetch departures from the VBB API."""
-        params = {"duration": self._duration, "results": self._results}
-        try:
-            data = await async_request_json(
-                self._session, API_PATH.format(station=self._station_id), params
+    @property
+    def available(self) -> bool:
+        # Keep showing cached departures during short API outages; the
+        # schedule itself does not become wrong just because one poll failed.
+        return self.coordinator.data is not None
+
+    def _matching(self) -> list[Departure]:
+        """Return the upcoming departures this sensor is responsible for."""
+        raise NotImplementedError
+
+    @callback
+    def _refresh_state(self) -> None:
+        """Recompute state from cached data (no API call)."""
+        if self._unsub_rollover is not None:
+            self._unsub_rollover()
+            self._unsub_rollover = None
+
+        now = dt_util.utcnow()
+        upcoming = [dep for dep in self._matching() if dep.time > now]
+        selected = self._apply(upcoming)
+
+        # When the shown departure has left, switch to the next one at once
+        # instead of showing a past time until the next poll.
+        if selected is not None:
+            self._unsub_rollover = async_track_point_in_utc_time(
+                self.hass, self._handle_rollover, selected.time
             )
-        except Exception:
-            # Keep the last successful state when the API is temporarily unreachable.
-            return
 
-        self._attr_available = True
+    def _apply(self, upcoming: list[Departure]) -> Departure | None:
+        raise NotImplementedError
 
-        departures: list[tuple[datetime, dict[str, Any]]] = []
-        for d in _extract_departures(data):
-            if d.get("line", {}).get("name") != self._line:
-                continue
-            dest_info = d.get("destination") or {}
-            dest_name = dest_info.get("name") or d.get("direction")
-            if dest_name != self._destination:
-                continue
-            dep_time = _parse_departure_time(_get_time(d))
-            if dep_time is None:
-                continue
-            if dep_time <= dt_util.utcnow():
-                continue
-            departures.append((dep_time, d))
+    @callback
+    def _handle_rollover(self, _now: datetime) -> None:
+        self._unsub_rollover = None
+        self._refresh_state()
+        self.async_write_ha_state()
 
-        if not departures:
-            self._attr_native_value = None
-            self._attr_extra_state_attributes = {}
-            return
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._refresh_state()
+        super()._handle_coordinator_update()
 
-        departures.sort(key=lambda item: item[0])
-        first_time, first = departures[0]
-        self._station_name = first.get("stop", {}).get("name", self._station_name)
-        self._direction = first.get("direction")
-        dest_info = first.get("destination") or {}
-        destination_name = dest_info.get("name") or self._destination
-        self._attr_native_value = first_time
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._refresh_state()
+        self.async_on_remove(self._cancel_rollover)
 
-        stop = first.get("stop") or {}
+    @callback
+    def _cancel_rollover(self) -> None:
+        if self._unsub_rollover is not None:
+            self._unsub_rollover()
+            self._unsub_rollover = None
+
+    def _detail_attributes(self, dep: Departure) -> dict[str, Any]:
+        """Attributes describing a single selected departure."""
+        raw = dep.raw
+        stop = raw.get("stop") or {}
         location = stop.get("location") or {}
-        line_info = first.get("line") or {}
-        origin_info = first.get("origin") or {}
-        current_pos = first.get("currentTripPosition") or None
-        delay = _get_delay(first)
-
-        self._attr_extra_state_attributes = {
-            "line": self._line,
-            "destination": destination_name,
-            "direction": self._direction,
-            "station_id": self._station_id,
+        line_info = raw.get("line") or {}
+        return {
+            "line": dep.line,
+            "destination": dep.destination,
+            "direction": dep.direction,
+            "station_id": self._station.station_id,
             "station_name": stop.get("name"),
             "station_dhid": stop.get("stationDHID"),
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
             "line_id": line_info.get("id"),
             "mode": line_info.get("mode"),
-            "product": line_info.get("product"),
-            "operator": line_info.get("operator", {}).get("name"),
-            "trip_id": first.get("tripId"),
-            "delay": delay,
-            "prognosis_type": first.get("prognosisType"),
-            "origin": origin_info.get("name"),
-            "current_trip_position": current_pos or None,
-            "departures": [
-                {
-                    "when": _get_time(d),
-                    "delay": _get_delay(d),
-                    "platform": d.get("platform"),
-                    "destination": (d.get("destination") or {}).get("name"),
-                    "trip_id": d.get("tripId"),
-                    "prognosis_type": d.get("prognosisType"),
-                }
-                for _, d in departures
-            ],
+            "product": dep.product,
+            "operator": (line_info.get("operator") or {}).get("name"),
+            "trip_id": raw.get("tripId"),
+            "planned_when": dep.planned.isoformat() if dep.planned else None,
+            "delay": dep.delay_minutes,
+            "platform": raw.get("platform"),
+            "prognosis_type": raw.get("prognosisType"),
+            "origin": (raw.get("origin") or {}).get("name"),
+            "current_trip_position": raw.get("currentTripPosition") or None,
         }
 
 
-class VbbStationSensor(SensorEntity):
-    """Aggregate next departures for an entire station."""
+class VbbStationSensor(VbbBaseSensor):
+    """Next departure of any line at the station."""
 
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:train-clock"
 
-    def __init__(
-        self,
-        hass,
-        station_id: str,
-        station_name: str,
-        duration: int,
-        results: int,
-        products: list[str],
-        update_interval: int,
-        session,
-    ) -> None:
-        self.hass = hass
-        self._station_id = station_id
-        self._station_name = station_name
-        self._duration = duration
-        self._results = results
-        self._products = set(products)
-        self._session = session
-        self._attr_name = station_name
-        self._attr_unique_id = f"vbb_{station_id}_station"
-        self._attr_extra_state_attributes: dict[str, Any] = {}
-        self._attr_scan_interval = timedelta(minutes=update_interval)
+    def __init__(self, coordinator: VbbCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_name = self._station.name
+        self._attr_unique_id = f"vbb_{self._station.station_id}_station"
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=self._station_name,
-            manufacturer="VBB",
-        )
+    def _matching(self) -> list[Departure]:
+        return list(self.coordinator.data or [])
 
-    async def async_update(self) -> None:
-        """Fetch the next departure for the station."""
-
-        params = {"duration": self._duration, "results": self._results}
-
-        try:
-            data = await async_request_json(
-                self._session, API_PATH.format(station=self._station_id), params
-            )
-        except Exception:
-            # Keep the last successful state when the API is temporarily unreachable.
-            return
-
-        departures: list[tuple[datetime, dict[str, Any]]] = []
-        for dep in _extract_departures(data):
-            product = dep.get("line", {}).get("product")
-            if product and product not in self._products:
-                continue
-            dep_time = _parse_departure_time(_get_time(dep))
-            if dep_time is None or dep_time <= dt_util.utcnow():
-                continue
-            departures.append((dep_time, dep))
-
-        if not departures:
-            self._attr_available = True
+    def _apply(self, upcoming: list[Departure]) -> Departure | None:
+        if not upcoming:
             self._attr_native_value = None
             self._attr_extra_state_attributes = {}
-            return
-
-        departures.sort(key=lambda item: item[0])
-        first_time, first = departures[0]
-        self._attr_available = True
-        self._attr_native_value = first_time
-
-        stop = first.get("stop") or {}
-        line_info = first.get("line") or {}
-        destination = (first.get("destination") or {}).get("name")
-
+            return None
+        first = upcoming[0]
+        self._attr_native_value = first.time
         self._attr_extra_state_attributes = {
-            "line": line_info.get("name"),
-            "destination": destination,
-            "station_id": self._station_id,
-            "station_name": stop.get("name", self._station_name),
-            "product": line_info.get("product"),
+            "line": first.line,
+            "destination": first.destination,
+            "station_id": self._station.station_id,
+            "station_name": (first.raw.get("stop") or {}).get("name", self._station.name),
+            "product": first.product,
+            "delay": first.delay_minutes,
             "departures": [
-                {
-                    "when": _get_time(dep),
-                    "delay": _get_delay(dep),
-                    "line": (dep.get("line") or {}).get("name"),
-                    "destination": (dep.get("destination") or {}).get("name"),
-                }
-                for _, dep in departures
+                dep.summary(with_line=True)
+                for dep in upcoming[:MAX_ATTRIBUTE_DEPARTURES]
             ],
         }
+        return first
 
 
-class VbbDirectionSensor(SensorEntity):
-    """Representation of a VBB direction sensor aggregating all destinations."""
+class VbbDepartureSensor(VbbBaseSensor):
+    """Next departure of one line towards one destination."""
 
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:train"
+    def __init__(
+        self, coordinator: VbbCoordinator, line: str, destination: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._line = line
+        self._destination = destination
+        self._attr_name = f"{line} {destination}"
+        self._attr_unique_id = (
+            f"vbb_{self._station.station_id}_{slugify(line)}_{slugify(destination)}"
+        )
+
+    def _matching(self) -> list[Departure]:
+        return [
+            dep
+            for dep in self.coordinator.data or []
+            if dep.line == self._line and dep.destination == self._destination
+        ]
+
+    def _apply(self, upcoming: list[Departure]) -> Departure | None:
+        if not upcoming:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return None
+        first = upcoming[0]
+        self._attr_native_value = first.time
+        self._attr_extra_state_attributes = {
+            **self._detail_attributes(first),
+            "departures": [
+                dep.summary() for dep in upcoming[:MAX_ATTRIBUTE_DEPARTURES]
+            ],
+        }
+        return first
+
+
+class VbbDirectionSensor(VbbBaseSensor):
+    """The n-th next departure of one line in one direction."""
 
     def __init__(
         self,
-        hass,
-        station_id: str,
-        station_name: str,
+        coordinator: VbbCoordinator,
         line: str,
         direction: str,
-        duration: int,
-        results: int,
-        update_interval: int,
         departure_index: int,
     ) -> None:
-        self.hass = hass
-        self._station_id = station_id
-        self._station_name = station_name
+        super().__init__(coordinator)
         self._line = line
         self._direction = direction
-        self._duration = duration
-        self._results = results
-        self._departure_index = departure_index
+        self._index = departure_index
         self._attr_name = f"{line} {direction} {departure_index + 1}"
         self._attr_unique_id = (
-            f"vbb_{station_id}_{slugify(line)}_{slugify(direction)}_dir_{departure_index + 1}"
-        )
-        self._attr_extra_state_attributes: dict[str, Any] = {}
-        self._attr_scan_interval = timedelta(minutes=update_interval)
-        self._session = async_get_clientsession(hass)
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._station_id)},
-            name=self._station_name,
-            manufacturer="VBB",
+            f"vbb_{self._station.station_id}_{slugify(line)}_"
+            f"{slugify(direction)}_dir_{departure_index + 1}"
         )
 
-    async def async_update(self) -> None:
-        """Fetch departures from the VBB API."""
-        params = {"duration": self._duration, "results": self._results}
-        try:
-            data = await async_request_json(
-                self._session, API_PATH.format(station=self._station_id), params
-            )
-        except Exception:
-            # Keep the last successful state when the API is temporarily unreachable.
-            return
+    def _matching(self) -> list[Departure]:
+        return [
+            dep
+            for dep in self.coordinator.data or []
+            if dep.line == self._line and dep.direction == self._direction
+        ]
 
-        self._attr_available = True
-
-        departures: list[tuple[datetime, dict[str, Any]]] = []
-        for d in _extract_departures(data):
-            if d.get("line", {}).get("name") != self._line:
-                continue
-            if d.get("direction") != self._direction:
-                continue
-            dep_time = _parse_departure_time(_get_time(d))
-            if dep_time is None:
-                continue
-            if dep_time <= dt_util.utcnow():
-                continue
-            departures.append((dep_time, d))
-
-        if not departures:
+    def _apply(self, upcoming: list[Departure]) -> Departure | None:
+        summaries = [dep.summary() for dep in upcoming[:MAX_ATTRIBUTE_DEPARTURES]]
+        if len(upcoming) <= self._index:
             self._attr_native_value = None
-            self._attr_extra_state_attributes = {}
-            return
-
-        departures.sort(key=lambda item: item[0])
-        if len(departures) <= self._departure_index:
-            self._attr_native_value = None
-            self._attr_extra_state_attributes = {
-                "line": self._line,
-                "direction": self._direction,
-                "departure_slot": self._departure_index + 1,
-                "station_id": self._station_id,
-                "departures": [
-                    {
-                        "when": _get_time(d),
-                        "delay": _get_delay(d),
-                        "platform": d.get("platform"),
-                        "destination": (d.get("destination") or {}).get("name"),
-                        "trip_id": d.get("tripId"),
-                        "prognosis_type": d.get("prognosisType"),
-                    }
-                    for _, d in departures
-                ],
-            }
-            return
-
-        selected_time, selected = departures[self._departure_index]
-        self._station_name = selected.get("stop", {}).get("name", self._station_name)
-        dest_info = selected.get("destination") or {}
-        destination_name = dest_info.get("name")
-        self._attr_native_value = selected_time
-
-        stop = selected.get("stop") or {}
-        location = stop.get("location") or {}
-        line_info = selected.get("line") or {}
-        origin_info = selected.get("origin") or {}
-        current_pos = selected.get("currentTripPosition") or None
-        delay = _get_delay(selected)
-
-        self._attr_extra_state_attributes = {
-            "line": self._line,
-            "direction": self._direction,
-            "departure_slot": self._departure_index + 1,
-            "destination": destination_name,
-            "station_id": self._station_id,
-            "station_name": stop.get("name"),
-            "station_dhid": stop.get("stationDHID"),
-            "latitude": location.get("latitude"),
-            "longitude": location.get("longitude"),
-            "line_id": line_info.get("id"),
-            "mode": line_info.get("mode"),
-            "product": line_info.get("product"),
-            "operator": line_info.get("operator", {}).get("name"),
-            "trip_id": selected.get("tripId"),
-            "delay": delay,
-            "prognosis_type": selected.get("prognosisType"),
-            "origin": origin_info.get("name"),
-            "current_trip_position": current_pos or None,
-            "departures": [
+            self._attr_extra_state_attributes = (
                 {
-                    "when": _get_time(d),
-                    "delay": _get_delay(d),
-                    "platform": d.get("platform"),
-                    "destination": (d.get("destination") or {}).get("name"),
-                    "trip_id": d.get("tripId"),
-                    "prognosis_type": d.get("prognosisType"),
+                    "line": self._line,
+                    "direction": self._direction,
+                    "departure_slot": self._index + 1,
+                    "station_id": self._station.station_id,
+                    "departures": summaries,
                 }
-                for _, d in departures
-            ],
+                if upcoming
+                else {}
+            )
+            return upcoming[0] if upcoming else None
+        selected = upcoming[self._index]
+        self._attr_native_value = selected.time
+        self._attr_extra_state_attributes = {
+            **self._detail_attributes(selected),
+            "direction": self._direction,
+            "departure_slot": self._index + 1,
+            "departures": summaries,
         }
+        return selected

@@ -11,7 +11,7 @@ NEARBY_PATH = "/locations/nearby"
 REQUEST_TIMEOUT = 10
 HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "HomeAssistant-VBB",
+    "User-Agent": "HomeAssistant-VBB (+https://github.com/404GamerNotFound/ha-public-transport-vbb)",
 }
 CONF_STATION_ID = "station_id"
 CONF_DURATION = "duration"
@@ -32,3 +32,8 @@ PRODUCT_OPTIONS = [
     "express",
 ]
 DEFAULT_PRODUCTS = PRODUCT_OPTIONS
+
+# Number of "next n departures" sensors per line and direction.
+DIRECTION_SLOTS = 3
+# Upper bound for the ``departures`` list attribute to keep state objects small.
+MAX_ATTRIBUTE_DEPARTURES = 10

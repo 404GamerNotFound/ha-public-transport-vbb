@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -13,6 +13,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
+from homeassistant.core import callback
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
@@ -32,7 +33,16 @@ from .const import (
     SEARCH_PATH,
 )
 
-from .api import async_request_json
+from .api import VbbApiError, async_request_json
+
+
+def _products_selector() -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=[{"label": p.title(), "value": p} for p in PRODUCT_OPTIONS],
+            multiple=True,
+        )
+    )
 
 
 class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -41,25 +51,30 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._stations: List[Dict[str, Any]] = []
-        self._selected_station: Dict[str, Any] | None = None
+        self._stations: list[dict[str, Any]] = []
+        self._selected_station: dict[str, Any] | None = None
 
-    async def async_step_user(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial step where the user searches for a station."""
 
-        errors: Dict[str, str] = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             station_name = user_input.get("station_name")
             latitude = user_input.get(CONF_LATITUDE)
             longitude = user_input.get(CONF_LONGITUDE)
 
-            if station_name:
-                self._stations = await self._search_by_name(station_name)
-            elif latitude is not None and longitude is not None:
-                self._stations = await self._search_by_coordinates(latitude, longitude)
-            else:
-                errors["base"] = "no_input"
+            try:
+                if station_name:
+                    self._stations = await self._search_by_name(station_name)
+                elif latitude is not None and longitude is not None:
+                    self._stations = await self._search_by_coordinates(
+                        latitude, longitude
+                    )
+                else:
+                    errors["base"] = "no_input"
+            except VbbApiError:
+                errors["base"] = "cannot_connect"
 
             if not errors and not self._stations:
                 errors["base"] = "no_stations"
@@ -80,7 +95,7 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_station(
-        self, user_input: Dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None
     ):
         """Let the user select one of the found stations."""
 
@@ -106,7 +121,7 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="select_station", data_schema=data_schema)
 
-    async def async_step_config(self, user_input: Dict[str, Any] | None = None):
+    async def async_step_config(self, user_input: dict[str, Any] | None = None):
         """Configure additional options and create the entry."""
 
         assert self._selected_station is not None
@@ -142,21 +157,19 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.All(int, vol.Range(min=1)),
                 vol.Optional(
                     CONF_PRODUCTS, default=DEFAULT_PRODUCTS
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[
-                            {"label": p.title(), "value": p}
-                            for p in PRODUCT_OPTIONS
-                        ],
-                        multiple=True,
-                    )
-                ),
+                ): _products_selector(),
             }
         )
 
         return self.async_show_form(step_id="config", data_schema=data_schema)
 
-    async def _search_by_name(self, name: str) -> List[Dict[str, Any]]:
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        """Return the options flow handler."""
+        return VbbOptionsFlow()
+
+    async def _search_by_name(self, name: str) -> list[dict[str, Any]]:
         """Search stations by name using the VBB API."""
         session = async_get_clientsession(self.hass)
         params = {"query": name}
@@ -165,9 +178,41 @@ class VbbConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _search_by_coordinates(
         self, latitude: float, longitude: float
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Search stations near the given coordinates."""
         session = async_get_clientsession(self.hass)
         params = {"latitude": latitude, "longitude": longitude}
         data = await async_request_json(session, NEARBY_PATH, params)
         return [s for s in data if s.get("id") and s.get("name")]
+
+
+class VbbOptionsFlow(config_entries.OptionsFlow):
+    """Change polling and filter settings without re-adding the station."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        entry = self.config_entry
+
+        def current(key: str, default: Any) -> Any:
+            return entry.options.get(key, entry.data.get(key, default))
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_UPDATE_INTERVAL,
+                    default=current(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+                vol.Required(
+                    CONF_DURATION, default=current(CONF_DURATION, DEFAULT_DURATION)
+                ): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                vol.Required(
+                    CONF_RESULTS, default=current(CONF_RESULTS, DEFAULT_RESULTS)
+                ): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                vol.Required(
+                    CONF_PRODUCTS, default=current(CONF_PRODUCTS, DEFAULT_PRODUCTS)
+                ): _products_selector(),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=data_schema)
